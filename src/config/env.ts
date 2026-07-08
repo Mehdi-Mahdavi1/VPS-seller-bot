@@ -19,6 +19,10 @@ export const env = {
   BOT_TOKEN: process.env.BOT_TOKEN as string,
   INFOMANIAK_AUTH_TOKEN: process.env.INFOMANIAK_AUTH_TOKEN as string,
   DATABASE_URL: process.env.DATABASE_URL as string,
+  INFOMANIAK_SSH_KEY: process.env.INFOMANIAK_SSH_KEY ?? undefined,
+  INFOMANIAK_NETWORK_IDS: process.env.INFOMANIAK_NETWORK_IDS
+    ? process.env.INFOMANIAK_NETWORK_IDS.split(",").map((value) => value.trim()).filter(Boolean)
+    : [],
   ADMIN_IDS: process.env.ADMIN_IDS ? process.env.ADMIN_IDS.split(",").map((value) => value.trim()) : [],
   NODE_ENV: process.env.NODE_ENV || "development",
 };
