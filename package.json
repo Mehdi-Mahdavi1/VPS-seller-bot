@@ -1,0 +1,29 @@
+{
+  "name": "virtual-server-rental-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Production-ready Telegram bot for virtual server rental platform.",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name init",
+    "lint": "echo \"No lint configured.\""
+  },
+  "dependencies": {
+    "@prisma/client": "^4.15.0",
+    "axios": "^1.7.0",
+    "dotenv": "^16.3.1",
+    "grammy": "^1.44.0",
+    "node-cron": "^3.0.2",
+    "pino": "^8.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/node-cron": "^2.0.4",
+    "prisma": "^4.15.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.5.0"
+  }
+}

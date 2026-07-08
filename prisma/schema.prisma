@@ -1,0 +1,207 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TransactionType {
+  DEPOSIT
+  PURCHASE
+  REFUND
+  ADJUSTMENT
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PaymentMethod {
+  CARD_TO_CARD
+  ONLINE
+}
+
+enum ServerStatus {
+  PENDING
+  ACTIVE
+  STOPPED
+  DELETED
+  FAILED
+}
+
+enum DatacenterProviderType {
+  INFOMANIAK
+}
+
+model User {
+  id          String    @id @default(cuid())
+  telegramId  String    @unique
+  username    String?
+  firstName   String?
+  lastName    String?
+  active      Boolean   @default(true)
+  wallet      Wallet?
+  servers     Server[]
+  payments    Payment[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Wallet {
+  id          String              @id @default(cuid())
+  user        User                @relation(fields: [userId], references: [id])
+  userId      String              @unique
+  balance     Decimal             @default(0.0)
+  transactions WalletTransaction[]
+  servers     Server[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+
+model WalletTransaction {
+  id            String          @id @default(cuid())
+  wallet        Wallet          @relation(fields: [walletId], references: [id])
+  walletId      String
+  type          TransactionType
+  amount        Decimal
+  description   String
+  metadata      Json?
+  createdAt     DateTime        @default(now())
+  serverBilling ServerBilling?
+}
+
+model Datacenter {
+  id          String                 @id @default(cuid())
+  provider    DatacenterProviderType
+  name        String
+  slug        String                 @unique
+  region      String
+  active      Boolean                @default(true)
+  plans       ServerPlan[]
+  servers     Server[]
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+}
+
+model ServerPlan {
+  id          String    @id @default(cuid())
+  datacenter  Datacenter @relation(fields: [datacenterId], references: [id])
+  datacenterId String
+  externalId  String   @unique
+  name        String
+  vcpus       Int
+  ramMb       Int
+  diskGb      Int
+  bandwidthTb Int      @default(1)
+  hourlyPrice Decimal
+  monthlyPrice Decimal
+  servers     Server[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model OperatingSystem {
+  id          String    @id @default(cuid())
+  name        String
+  imageId     String    @unique
+  provider    DatacenterProviderType
+  servers     Server[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Server {
+  id               String         @id @default(cuid())
+  user             User           @relation(fields: [userId], references: [id])
+  userId           String
+  wallet           Wallet         @relation(fields: [walletId], references: [id])
+  walletId         String
+  plan             ServerPlan     @relation(fields: [planId], references: [id])
+  planId           String
+  operatingSystem  OperatingSystem @relation(fields: [operatingSystemId], references: [id])
+  operatingSystemId String
+  datacenter       Datacenter     @relation(fields: [datacenterId], references: [id])
+  datacenterId     String
+  externalServerId String         @unique
+  externalImageId  String
+  externalFlavorId String
+  name             String
+  status           ServerStatus   @default(PENDING)
+  hourlyPrice      Decimal
+  billingRecords   ServerBilling[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+}
+
+model ServerBilling {
+  id          String   @id @default(cuid())
+  server      Server   @relation(fields: [serverId], references: [id])
+  serverId    String
+  walletTransaction WalletTransaction @relation(fields: [walletTransactionId], references: [id])
+  walletTransactionId String @unique
+  amount      Decimal
+  billedAt    DateTime @default(now())
+}
+
+model Payment {
+  id          String         @id @default(cuid())
+  user        User           @relation(fields: [userId], references: [id])
+  userId      String
+  receipt     PaymentReceipt?
+  amount      Decimal
+  currency    String         @default("IRR")
+  method      PaymentMethod
+  status      PaymentStatus  @default(PENDING)
+  note        String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model PaymentReceipt {
+  id          String   @id @default(cuid())
+  payment     Payment  @relation(fields: [paymentId], references: [id])
+  paymentId   String   @unique
+  filePath    String
+  uploadedAt  DateTime @default(now())
+}
+
+model Admin {
+  id          String   @id @default(cuid())
+  telegramId  String   @unique
+  username    String?
+  role        String   @default("administrator")
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorId     String?
+  action      String
+  entity      String
+  entityId    String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+}
+
+model CronJob {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  schedule    String
+  lastRunAt   DateTime?
+  status      String
+  details     String?
+  updatedAt   DateTime @updatedAt
+}
+
+model Setting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}
