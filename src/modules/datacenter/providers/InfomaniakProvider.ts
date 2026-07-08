@@ -56,21 +56,18 @@ export class InfomaniakProvider implements DatacenterProvider {
 
   public async createServer(payload: CreateServerPayload): Promise<{ id: string; status: string; imageId: string; flavorId: string }> {
     try {
-      const serverPayload: any = {
-        name: payload.name,
-        imageRef: payload.imageRef,
-        flavorRef: payload.flavorRef,
+      const body = {
+        server: {
+          name: payload.name,
+          imageRef: payload.imageRef,
+          flavorRef: payload.flavorRef,
+          key_name: env.INFOMANIAK_SSH_KEY ?? "dvrssh1",
+          networks: [
+            { uuid: "1729a205-fabb-45b2-b040-bb712aca40db" },
+            { uuid: "546cce65-a380-45ac-b704-0383b7998262" },
+          ],
+        },
       };
-
-      if (env.INFOMANIAK_SSH_KEY) {
-        serverPayload.key_name = env.INFOMANIAK_SSH_KEY;
-      }
-
-      if (env.INFOMANIAK_NETWORK_IDS?.length) {
-        serverPayload.networks = env.INFOMANIAK_NETWORK_IDS.map((uuid) => ({ uuid }));
-      }
-
-      const body = { server: serverPayload };
       const response = await this.client.post(SERVER_ENDPOINT, body);
       return {
         id: response.data.server?.id ?? response.data?.id,
@@ -79,7 +76,7 @@ export class InfomaniakProvider implements DatacenterProvider {
         flavorId: payload.flavorRef,
       };
     } catch (error) {
-      logger.error({ error, payload, networks: env.INFOMANIAK_NETWORK_IDS, sshKey: env.INFOMANIAK_SSH_KEY }, "Infomaniak server creation failed");
+      logger.error({ error, payload, networks: ["1729a205-fabb-45b2-b040-bb712aca40db", "546cce65-a380-45ac-b704-0383b7998262"], sshKey: env.INFOMANIAK_SSH_KEY ?? "dvrssh1" }, "Infomaniak server creation failed");
       throw new Error("Infomaniak server creation failed");
     }
   }
