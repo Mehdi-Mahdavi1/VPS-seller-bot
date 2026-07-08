@@ -52,4 +52,4 @@ export const buildPaymentAmountKeyboard = (): InlineKeyboard =>
     .text("⬅️ Back", "wallet_menu");
 
 export const buildAdminPaymentKeyboard = (paymentId: string): InlineKeyboard =>
-  new InlineKeyboard().text("✅ Approve", `admin_payment_approve:${paymentId}`).row().text("❌ Reject", `admin_payment_reject:${paymentId}`).row().text("⬅️ Main menu", "main_menu");
+  new InlineKeyboard().text("✅ Approve", `admin_payment:approve:${paymentId}`).row().text("❌ Reject", `admin_payment:reject:${paymentId}`).row().text("⬅️ Main menu", "main_menu");

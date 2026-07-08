@@ -212,19 +212,24 @@ export class BotApp {
       );
     });
 
-    bot.callbackQuery(/^admin_payment_(approve|reject):(.*)$/, async (ctx: any) => {
+    bot.callbackQuery(/^admin_payment:(approve|reject):(.*)$/, async (ctx: any) => {
       const [, action, paymentId] = parseCallbackData(ctx.callbackQuery.data!);
       const telegramId = ctx.from?.id.toString();
       if (!telegramId || !adminService.isAdmin(telegramId)) {
         await ctx.answerCallbackQuery({ text: "Unauthorized.", show_alert: true });
         return;
       }
-      if (action === "approve") {
-        await paymentService.approvePayment(paymentId, telegramId);
-        await ctx.editMessageText("✅ Payment approved and wallet updated.");
-      } else {
-        await paymentService.rejectPayment(paymentId, telegramId);
-        await ctx.editMessageText("❌ Payment rejected.");
+      try {
+        if (action === "approve") {
+          await paymentService.approvePayment(paymentId, telegramId);
+          await ctx.editMessageText("✅ Payment approved and wallet updated.");
+        } else {
+          await paymentService.rejectPayment(paymentId, telegramId);
+          await ctx.editMessageText("❌ Payment rejected.");
+        }
+      } catch (error: any) {
+        logger.error({ error }, "Admin payment action failed");
+        await ctx.answerCallbackQuery({ text: error?.message ?? "Action failed.", show_alert: true });
       }
     });
 
