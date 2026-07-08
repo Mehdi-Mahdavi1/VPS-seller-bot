@@ -23,6 +23,14 @@ function parseCallbackData(data: string): string[] {
   return data.split(":");
 }
 
+async function ensureAppUser(ctx: any) {
+  const telegramId = ctx.from?.id?.toString();
+  if (!telegramId) {
+    throw new Error("Telegram user ID is unavailable.");
+  }
+  return userService.ensureUser(telegramId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
+}
+
 function buildServerDetailsMessage(plan: any, osName: string | null): string {
   return [
     `🖥 <b>Plan details</b>`,
@@ -128,17 +136,13 @@ export class BotApp {
     bot.callbackQuery(/^create_server_confirm:(.*)$/, async (ctx: any) => {
       const [, token] = parseCallbackData(ctx.callbackQuery.data!);
       const selection = getSelectionState(token);
-      const userId = ctx.from?.id.toString();
-      if (!userId) {
-        await ctx.answerCallbackQuery({ text: "User data unavailable.", show_alert: true });
-        return;
-      }
       if (!selection?.imageId) {
         await ctx.answerCallbackQuery({ text: "Please select an operating system before creating the server.", show_alert: true });
         return;
       }
       try {
-        const server = await serverService.createServer(userId, selection.slug, selection.flavorId, selection.imageId);
+        const user = await ensureAppUser(ctx);
+        const server = await serverService.createServer(user.id, selection.slug, selection.flavorId, selection.imageId);
         await ctx.editMessageText(`✅ Server created successfully!\nServer name: ${server.name}\nStatus: ${server.status}`, { reply_markup: buildMainMenuKeyboard() });
       } catch (error) {
         logger.error(error, "Server creation failed");
@@ -147,14 +151,14 @@ export class BotApp {
     });
 
     bot.callbackQuery("wallet_menu", async (ctx: any) => {
-      const userId = ctx.from?.id.toString();
-      if (!userId) {
+      try {
+        const user = await ensureAppUser(ctx);
+        const summary = await walletService.getWalletSummary(user.id);
+        const text = [`💰 Wallet`, `Current Balance: ${formatCurrency(summary.balance)}`, `Total Deposits: ${formatCurrency(summary.totalDeposits)}`, `Total Usage: ${formatCurrency(summary.totalUsage)}`].join("\n");
+        await ctx.editMessageText(text, { reply_markup: buildPaymentMethodKeyboard() });
+      } catch (error) {
         await ctx.answerCallbackQuery({ text: "Unable to resolve user.", show_alert: true });
-        return;
       }
-      const summary = await walletService.getWalletSummary(userId);
-      const text = [`💰 Wallet`, `Current Balance: ${formatCurrency(summary.balance)}`, `Total Deposits: ${formatCurrency(summary.totalDeposits)}`, `Total Usage: ${formatCurrency(summary.totalUsage)}`].join("\n");
-      await ctx.editMessageText(text, { reply_markup: buildPaymentMethodKeyboard() });
     });
 
     bot.callbackQuery("wallet_increase", async (ctx: any) => {
@@ -168,24 +172,25 @@ export class BotApp {
         await ctx.answerCallbackQuery({ text: "Invalid amount selected.", show_alert: true });
         return;
       }
-      const userId = ctx.from?.id.toString();
-      if (!userId) {
+      try {
+        const user = await ensureAppUser(ctx);
+        const payment = await paymentService.createPendingPayment(user.id, amount, "CARD_TO_CARD");
+        const text = [`📄 Payment instructions`, `Card Number: 1234 5678 9012 3456`, `Card Holder Name: Your Company`, `Amount: ${formatCurrency(amount)}`, `Please take a screenshot of the transfer and upload the receipt below.`, `Payment ID: ${payment.id}`].join("\n");
+        await ctx.editMessageText(text, { reply_markup: new InlineKeyboard().text("⬅️ Back", "wallet_menu") });
+      } catch (error) {
         await ctx.answerCallbackQuery({ text: "Unable to resolve user.", show_alert: true });
-        return;
       }
-      const payment = await paymentService.createPendingPayment(userId, amount, "CARD_TO_CARD");
-      const text = [`📄 Payment instructions`, `Card Number: 1234 5678 9012 3456`, `Card Holder Name: Your Company`, `Amount: ${formatCurrency(amount)}`, `Please take a screenshot of the transfer and upload the receipt below.`, `Payment ID: ${payment.id}`].join("\n");
-      await ctx.editMessageText(text, { reply_markup: new InlineKeyboard().text("⬅️ Back", "wallet_menu") });
     });
 
     bot.on("message:photo", async (ctx: any) => {
-      const userId = ctx.from?.id.toString();
-      if (!userId) {
-        return;
-      }
-      const payment = await paymentService.attachReceiptForLatestPendingPayment(userId, ctx.message.photo[0].file_id);
-      if (payment) {
-        await ctx.reply("✅ Receipt received. An admin will review your payment shortly.");
+      try {
+        const user = await ensureAppUser(ctx);
+        const payment = await paymentService.attachReceiptForLatestPendingPayment(user.id, ctx.message.photo[0].file_id);
+        if (payment) {
+          await ctx.reply("✅ Receipt received. An admin will review your payment shortly.");
+        }
+      } catch (error) {
+        // ignore missing user or attachment issues
       }
     });
 
