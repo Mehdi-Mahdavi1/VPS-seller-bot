@@ -14,6 +14,7 @@ export function createSelectionState(initialState: Omit<SelectionState, "imageId
   return token;
 }
 
+
 export function getSelectionState(token: string): SelectionState | undefined {
   return callbackSelectionStore.get(token);
 }
