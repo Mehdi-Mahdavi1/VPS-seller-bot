@@ -27,10 +27,10 @@ export const buildCreateServerKeyboard = (slug: string, plans: FlavorDto[]) => {
   return keyboard;
 };
 
-export const buildOsMenuKeyboard = (slug: string, flavorId: string, images: ImageDto[]) => {
+export const buildOsMenuKeyboard = (token: string, images: ImageDto[], backCallback: string) => {
   const keyboard = new InlineKeyboard();
-  images.forEach((image) => keyboard.text(image.name, `os_select:${slug}:${flavorId}:${image.id}`).row());
-  keyboard.text("🔙 Back", `plan_select:${slug}:${flavorId}`);
+  images.forEach((image) => keyboard.text(image.name, `os_select:${token}:${image.id}`).row());
+  keyboard.text("🔙 Back", backCallback);
   return keyboard;
 };
 

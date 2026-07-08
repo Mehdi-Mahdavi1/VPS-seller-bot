@@ -17,6 +17,7 @@ import {
   buildAdminPaymentKeyboard,
 } from "./keyboard/menus";
 import { formatCurrency } from "../modules/common/formatter";
+import { createSelectionState, getSelectionState, updateSelectionState } from "./callbackStore";
 
 function parseCallbackData(data: string): string[] {
   return data.split(":");
@@ -77,49 +78,67 @@ export class BotApp {
         await ctx.answerCallbackQuery({ text: "The selected plan is no longer available.", show_alert: true });
         return;
       }
+      const token = createSelectionState({ slug, flavorId });
       const message = buildServerDetailsMessage(plan, null);
-      const keyboard = new InlineKeyboard().text("💿 Select Operating System", `select_os:${slug}:${flavorId}:none`).row().text("✅ Create Server", `create_server_confirm:${slug}:${flavorId}:none`).row().text("🔙 Main menu", "main_menu");
-      await ctx.editMessageText(message, { reply_markup: keyboard, parse_mode: "HTML" });
-    });
-
-    bot.callbackQuery(/^select_os:(.*):(.*):(.*)$/, async (ctx: any) => {
-      const [, slug, flavorId, currentImageId] = parseCallbackData(ctx.callbackQuery.data!);
-      const images = await datacenterServiceInstance.listOperatingSystems(slug);
-      const keyboard = buildOsMenuKeyboard(slug, flavorId, images);
-      await ctx.editMessageText("💿 Select Server Operating System\n❕Changing OS after server creation is not supported.", { reply_markup: keyboard });
-    });
-
-    bot.callbackQuery(/^os_select:(.*):(.*):(.*)$/, async (ctx: any) => {
-      const [, slug, flavorId, imageId] = parseCallbackData(ctx.callbackQuery.data!);
-      const plan = await datacenterServiceInstance.getPlanById(slug, flavorId);
-      const os = await datacenterServiceInstance.getOperatingSystemById(imageId);
-      if (!plan || !os) {
-        await ctx.answerCallbackQuery({ text: "Unable to load selected operating system.", show_alert: true });
-        return;
-      }
-      const message = buildServerDetailsMessage(plan, os.name);
       const keyboard = new InlineKeyboard()
-        .text("💿 Select Operating System", `select_os:${slug}:${flavorId}:${imageId}`)
+        .text("💿 Select Operating System", `select_os:${token}`)
         .row()
-        .text("✅ Create Server", `create_server_confirm:${slug}:${flavorId}:${imageId}`)
+        .text("✅ Create Server", `create_server_confirm:${token}`)
         .row()
         .text("🔙 Main menu", "main_menu");
       await ctx.editMessageText(message, { reply_markup: keyboard, parse_mode: "HTML" });
     });
 
-    bot.callbackQuery(/^create_server_confirm:(.*):(.*):(.*)$/, async (ctx: any) => {
-      const [, slug, flavorId, imageId] = parseCallbackData(ctx.callbackQuery.data!);
+    bot.callbackQuery(/^select_os:(.*)$/, async (ctx: any) => {
+      const [, token] = parseCallbackData(ctx.callbackQuery.data!);
+      const selection = getSelectionState(token);
+      if (!selection) {
+        await ctx.answerCallbackQuery({ text: "Selection expired. Please choose a plan again.", show_alert: true });
+        return;
+      }
+      const images = await datacenterServiceInstance.listOperatingSystems(selection.slug);
+      const keyboard = buildOsMenuKeyboard(token, images, `plan_select:${selection.slug}:${selection.flavorId}`);
+      await ctx.editMessageText("💿 Select Server Operating System\n❕Changing OS after server creation is not supported.", { reply_markup: keyboard });
+    });
+
+    bot.callbackQuery(/^os_select:(.*):(.*)$/, async (ctx: any) => {
+      const [, token, imageId] = parseCallbackData(ctx.callbackQuery.data!);
+      const selection = getSelectionState(token);
+      if (!selection) {
+        await ctx.answerCallbackQuery({ text: "Selection expired. Please choose a plan again.", show_alert: true });
+        return;
+      }
+      const plan = await datacenterServiceInstance.getPlanById(selection.slug, selection.flavorId);
+      const os = await datacenterServiceInstance.getOperatingSystemById(imageId);
+      if (!plan || !os) {
+        await ctx.answerCallbackQuery({ text: "Unable to load selected operating system.", show_alert: true });
+        return;
+      }
+      updateSelectionState(token, { imageId });
+      const message = buildServerDetailsMessage(plan, os.name);
+      const keyboard = new InlineKeyboard()
+        .text("💿 Select Operating System", `select_os:${token}`)
+        .row()
+        .text("✅ Create Server", `create_server_confirm:${token}`)
+        .row()
+        .text("🔙 Main menu", "main_menu");
+      await ctx.editMessageText(message, { reply_markup: keyboard, parse_mode: "HTML" });
+    });
+
+    bot.callbackQuery(/^create_server_confirm:(.*)$/, async (ctx: any) => {
+      const [, token] = parseCallbackData(ctx.callbackQuery.data!);
+      const selection = getSelectionState(token);
       const userId = ctx.from?.id.toString();
       if (!userId) {
         await ctx.answerCallbackQuery({ text: "User data unavailable.", show_alert: true });
         return;
       }
-      if (imageId === "none") {
+      if (!selection?.imageId) {
         await ctx.answerCallbackQuery({ text: "Please select an operating system before creating the server.", show_alert: true });
         return;
       }
       try {
-        const server = await serverService.createServer(userId, slug, flavorId, imageId);
+        const server = await serverService.createServer(userId, selection.slug, selection.flavorId, selection.imageId);
         await ctx.editMessageText(`✅ Server created successfully!\nServer name: ${server.name}\nStatus: ${server.status}`, { reply_markup: buildMainMenuKeyboard() });
       } catch (error) {
         logger.error(error, "Server creation failed");
