@@ -154,9 +154,19 @@ export class BotApp {
         const billingMode = selection.billingMode ?? "HOURLY";
         const server = await serverService.createServer(user.id, selection.slug, selection.flavorId, selection.imageId, billingMode);
         await ctx.editMessageText(`✅ Server created successfully!\nServer name: ${server.name}\nStatus: ${server.status}`, { reply_markup: buildMainMenuKeyboard() });
-      } catch (error) {
+      } catch (error: any) {
         logger.error(error, "Server creation failed");
-        await ctx.editMessageText("❌ Server creation failed. Please try again later or contact support.", { reply_markup: buildMainMenuKeyboard() });
+        const insufficientBalance = error?.message?.includes("Insufficient wallet balance");
+        if (insufficientBalance) {
+          await ctx.editMessageText("❌ موجودی کیف پول شما برای خرید سرور کافی نیست. لطفاً ابتدا کیف پول را شارژ کنید.", {
+            reply_markup: new InlineKeyboard()
+              .text("💳 شارژ کیف پول", "wallet_menu")
+              .row()
+              .text("🔙 منوی اصلی", "main_menu"),
+          });
+        } else {
+          await ctx.editMessageText("❌ Server creation failed. Please try again later or contact support.", { reply_markup: buildMainMenuKeyboard() });
+        }
       }
     });
 
