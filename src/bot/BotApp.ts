@@ -354,11 +354,21 @@ export class BotApp {
       try {
         if (action === "approve") {
           await paymentService.approvePayment(paymentId, telegramId);
-          await ctx.editMessageText("✅ Payment approved and wallet updated.");
+          await ctx.answerCallbackQuery({ text: "Payment approved." });
         } else {
           await paymentService.rejectPayment(paymentId, telegramId);
-          await ctx.editMessageText("❌ Payment rejected.");
+          await ctx.answerCallbackQuery({ text: "Payment rejected." });
         }
+
+        if (ctx.callbackQuery?.message?.message_id) {
+          try {
+            await ctx.deleteMessage(ctx.callbackQuery.message.message_id);
+          } catch (error) {
+            logger.warn({ error }, "Unable to delete payment review message after admin action");
+          }
+        }
+
+        await ctx.reply(action === "approve" ? "✅ Payment approved and wallet updated." : "❌ Payment rejected.");
       } catch (error: any) {
         logger.error({ error }, "Admin payment action failed");
         await ctx.answerCallbackQuery({ text: error?.message ?? "Action failed.", show_alert: true });
@@ -366,7 +376,14 @@ export class BotApp {
     });
 
     bot.callbackQuery("main_menu", async (ctx: any) => {
-      await ctx.editMessageText("Main menu", { reply_markup: buildMainMenuKeyboard() });
+      if (ctx.callbackQuery?.message?.message_id) {
+        try {
+          await ctx.deleteMessage(ctx.callbackQuery.message.message_id);
+        } catch (error) {
+          logger.warn({ error }, "Unable to delete message before returning to main menu");
+        }
+      }
+      await ctx.reply("Main menu", { reply_markup: buildMainMenuKeyboard() });
     });
 
     bot.catch((err: any) => {
