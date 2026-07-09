@@ -1,4 +1,7 @@
 export function generateCloudInitScript(password: string): string {
+  // Escape special characters for YAML/shell
+  const escapedPassword = password.replace(/\\/g, "\\\\").replace(/'/g, "'\\''");
+  
   return `#cloud-config
 
 disable_root: false
@@ -8,7 +11,7 @@ chpasswd:
   expire: false
   users:
     - name: root
-      password: ${password}
+      password: '${escapedPassword}'
       type: text
 
 packages:

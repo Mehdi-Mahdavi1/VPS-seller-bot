@@ -19,7 +19,8 @@ export class ServerService {
   }
 
   private generateRandomPassword(length = 20): string {
-    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+    // Use only safe characters that don't need escaping in YAML/shell
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_";
     const bytes = randomBytes(length);
     return Array.from(bytes, (byte, index) => chars[byte % chars.length]).join("");
   }
