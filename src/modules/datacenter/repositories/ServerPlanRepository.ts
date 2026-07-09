@@ -31,4 +31,8 @@ export class ServerPlanRepository {
   public async findByExternalId(externalId: string) {
     return prisma.serverPlan.findUnique({ where: { externalId } });
   }
+
+  public async updatePrice(externalId: string, monthlyPrice: number) {
+    return prisma.serverPlan.update({ where: { externalId }, data: { monthlyPrice, hourlyPrice: Number(monthlyPrice / 720) } });
+  }
 }

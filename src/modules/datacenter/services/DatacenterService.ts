@@ -33,8 +33,25 @@ export class DatacenterService {
     const provider = this.resolveProvider(slug);
     const datacenter = await this.datacenterRepository.ensureDatacenter({ slug: "infomaniak", name: "Infomaniak", provider: "INFOMANIAK", region: "ch" });
     const flavors = await provider.listFlavors();
+
+    // Only keep a curated set of flavors matching allowed (ram, cpu) pairs and with disk > 0
+    const allowedPairs: Array<{ ramGb: number; vcpus: number }> = [
+      { ramGb: 1, vcpus: 1 },
+      { ramGb: 2, vcpus: 2 },
+      { ramGb: 4, vcpus: 2 },
+      { ramGb: 8, vcpus: 4 },
+      { ramGb: 16, vcpus: 8 },
+    ];
+
+    const filtered = flavors.filter((item) => {
+      const ramGb = Math.round(item.ramMb / 1024);
+      const matchesPair = allowedPairs.some((p) => p.ramGb === ramGb && p.vcpus === item.vcpus);
+      return matchesPair && (item.diskGb ?? 0) > 0;
+    });
+
+    // Upsert the filtered plans and then read the stored monthlyPrice so admin-set prices take precedence
     await Promise.all(
-      flavors.map((item) =>
+      filtered.map((item) =>
         this.planRepository.upsertPlan({
           datacenterId: datacenter.id,
           externalId: item.id,
@@ -48,7 +65,23 @@ export class DatacenterService {
         })
       )
     );
-    return flavors;
+
+    // Replace provider monthlyPrice with stored DB monthlyPrice when available
+    const result: FlavorDto[] = await Promise.all(
+      filtered.map(async (item) => {
+        const record = await this.planRepository.findByExternalId(item.id);
+        return {
+          id: item.id,
+          name: item.name,
+          vcpus: item.vcpus,
+          ramMb: item.ramMb,
+          diskGb: item.diskGb,
+          monthlyPrice: record?.monthlyPrice ?? item.monthlyPrice,
+        } as FlavorDto;
+      })
+    );
+
+    return result;
   }
 
   public async listOperatingSystems(slug: string): Promise<ImageDto[]> {
@@ -95,6 +128,10 @@ export class DatacenterService {
 
   public async getDatacenterRecord(slug: string) {
     return this.datacenterRepository.ensureDatacenter({ slug: "infomaniak", name: "Infomaniak", provider: "INFOMANIAK", region: "ch" });
+  }
+
+  public async updatePlanPrice(externalId: string, monthlyPrice: number) {
+    return this.planRepository.updatePrice(externalId, monthlyPrice);
   }
 
   public resolveProvider(slug: string): DatacenterProvider {

@@ -18,6 +18,7 @@ import {
 } from "./keyboard/menus";
 import { formatCurrency } from "../modules/common/formatter";
 import { createSelectionState, getSelectionState, updateSelectionState } from "./callbackStore";
+import { setPendingPrice, getPendingPrice, clearPendingPrice } from "./adminPriceStore";
 
 function parseCallbackData(data: string): string[] {
   return data.split(":");
@@ -39,7 +40,7 @@ function buildServerDetailsMessage(plan: any, osName: string | null): string {
     `RAM: ${plan.ramMb / 1024} GB`,
     `Disk: ${plan.diskGb} GB`,
     `Traffic: 1 TB`,
-    `Price: ${formatCurrency(plan.hourlyPrice)} / hour`,
+    `Price: ${formatCurrency((plan.monthlyPrice ?? 0) / 720)} / hour`,
     `Selected OS: ${osName ?? "Not Selected"}`,
   ].join("\n");
 }
@@ -200,6 +201,17 @@ export class BotApp {
         await ctx.answerCallbackQuery({ text: "You are not authorized to access the admin panel.", show_alert: true });
         return;
       }
+      // Admin panel: show options for payments and plan pricing
+      const keyboard = new InlineKeyboard().text("📝 Pending payments", "admin_pending_payments").row().text("💲 Manage plans/prices", "admin_manage_plans");
+      await ctx.editMessageText("🛠 Admin panel", { reply_markup: keyboard });
+    });
+
+    bot.callbackQuery("admin_pending_payments", async (ctx: any) => {
+      const telegramId = ctx.from?.id.toString();
+      if (!telegramId || !adminService.isAdmin(telegramId)) {
+        await ctx.answerCallbackQuery({ text: "Unauthorized.", show_alert: true });
+        return;
+      }
       const pendingPayments = await adminService.getPendingPayments();
       if (pendingPayments.length === 0) {
         await ctx.editMessageText("✅ No pending payments at the moment.");
@@ -210,6 +222,60 @@ export class BotApp {
         `📝 Pending payment\nUser: ${payment.user.telegramId}\nAmount: ${formatCurrency(Number(payment.amount))}\nMethod: ${payment.method}\nStatus: ${payment.status}`,
         { reply_markup: buildAdminPaymentKeyboard(payment.id) }
       );
+    });
+
+    bot.callbackQuery("admin_manage_plans", async (ctx: any) => {
+      const telegramId = ctx.from?.id.toString();
+      if (!telegramId || !adminService.isAdmin(telegramId)) {
+        await ctx.answerCallbackQuery({ text: "Unauthorized.", show_alert: true });
+        return;
+      }
+      const plans = await datacenterServiceInstance.listPlans("infomaniak");
+      if (plans.length === 0) {
+        await ctx.editMessageText("No plans available to manage.");
+        return;
+      }
+      const keyboard = new InlineKeyboard();
+      plans.forEach((p) => keyboard.text(`${p.name} | ${p.vcpus} Core | ${p.ramMb / 1024} GB | ${p.diskGb} GB | ${formatCurrency(p.monthlyPrice ?? 0)}`, `admin_price_set:${p.id}`).row());
+      keyboard.text("🔙 Main menu", "main_menu");
+      await ctx.editMessageText("Select a plan to set its monthly price:", { reply_markup: keyboard });
+    });
+
+    bot.callbackQuery(/^admin_price_set:(.*)$/, async (ctx: any) => {
+      const [, externalId] = parseCallbackData(ctx.callbackQuery.data!);
+      const telegramId = ctx.from?.id.toString();
+      if (!telegramId || !adminService.isAdmin(telegramId)) {
+        await ctx.answerCallbackQuery({ text: "Unauthorized.", show_alert: true });
+        return;
+      }
+      setPendingPrice(telegramId, externalId);
+      await ctx.editMessageText("Please send the new monthly price in IRR as a message (numbers only).\nExample: 2000000");
+    });
+
+    // Handle admin text messages for setting price
+    bot.on("message:text", async (ctx: any) => {
+      const telegramId = ctx.from?.id?.toString();
+      if (!telegramId || !adminService.isAdmin(telegramId)) {
+        return;
+      }
+      const pending = getPendingPrice(telegramId);
+      if (!pending) {
+        return;
+      }
+      const text = ctx.message?.text?.trim();
+      const price = Number(text?.replace(/[^0-9]/g, ""));
+      if (!price || isNaN(price) || price <= 0) {
+        await ctx.reply("Invalid price. Please send a numeric monthly price in IRR.");
+        return;
+      }
+      try {
+        await datacenterServiceInstance.updatePlanPrice(pending.externalId, price);
+        clearPendingPrice(telegramId);
+        await ctx.reply(`Price updated to ${formatCurrency(price)} for plan ${pending.externalId}`);
+      } catch (error: any) {
+        logger.error({ error }, "Failed to update plan price");
+        await ctx.reply("Failed to update price. Check logs.");
+      }
     });
 
     bot.callbackQuery(/^admin_payment:(approve|reject):(.*)$/, async (ctx: any) => {
