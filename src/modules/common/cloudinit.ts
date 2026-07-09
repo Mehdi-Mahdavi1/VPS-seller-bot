@@ -11,10 +11,16 @@ chpasswd:
       password: ${password}
       type: text
 
+packages:
+  - openssh-server
+
 runcmd:
   - sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
   - sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
-  - systemctl restart ssh || systemctl restart sshd
+  - sed -i 's/^#*PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+  - sleep 2
+  - systemctl restart sshd || service ssh restart
+  - sleep 1
 `;
 }
 
