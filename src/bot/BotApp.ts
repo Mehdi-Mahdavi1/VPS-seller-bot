@@ -17,6 +17,7 @@ import {
   buildAdminPaymentKeyboard,
 } from "./keyboard/menus";
 import { formatCurrency } from "../modules/common/formatter";
+import { env } from "../config/env";
 import { createSelectionState, getSelectionState, updateSelectionState } from "./callbackStore";
 import { setPendingPrice, getPendingPrice, clearPendingPrice } from "./adminPriceStore";
 
@@ -228,8 +229,13 @@ export class BotApp {
     bot.on("message:photo", async (ctx: any) => {
       try {
         const user = await ensureAppUser(ctx);
-        const payment = await paymentService.attachReceiptForLatestPendingPayment(user.id, ctx.message.photo[0].file_id);
+        const photoFileId = ctx.message.photo[ctx.message.photo.length - 1]?.file_id;
+        const payment = await paymentService.attachReceiptForLatestPendingPayment(user.id, photoFileId);
         if (payment) {
+          const caption = `🧾 New wallet recharge receipt\nUser: ${user.telegramId}\nAmount: ${formatCurrency(Number(payment.amount))}\nPayment ID: ${payment.id}`;
+          await Promise.allSettled(
+            env.ADMIN_IDS.map((adminId: string) => ctx.api.sendPhoto(adminId, photoFileId, { caption }))
+          );
           await ctx.reply("✅ Receipt received. An admin will review your payment shortly.");
         }
       } catch (error) {
@@ -260,6 +266,15 @@ export class BotApp {
         return;
       }
       const payment = pendingPayments[0];
+      if (payment.receipt?.filePath) {
+        try {
+          await ctx.api.sendPhoto(telegramId, payment.receipt.filePath, {
+            caption: `🧾 Receipt for payment ${payment.id}\nUser: ${payment.user.telegramId}\nAmount: ${formatCurrency(Number(payment.amount))}`,
+          });
+        } catch (error) {
+          logger.warn({ error, paymentId: payment.id }, "Unable to send payment receipt to admin");
+        }
+      }
       await ctx.editMessageText(
         `📝 Pending payment\nUser: ${payment.user.telegramId}\nAmount: ${formatCurrency(Number(payment.amount))}\nMethod: ${payment.method}\nStatus: ${payment.status}`,
         { reply_markup: buildAdminPaymentKeyboard(payment.id) }

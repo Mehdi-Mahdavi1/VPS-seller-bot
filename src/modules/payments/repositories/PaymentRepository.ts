@@ -7,7 +7,11 @@ export class PaymentRepository {
   }
 
   public async attachReceipt(paymentId: string, filePath: string) {
-    return prisma.paymentReceipt.create({ data: { paymentId, filePath } });
+    return prisma.paymentReceipt.upsert({
+      where: { paymentId },
+      update: { filePath },
+      create: { paymentId, filePath },
+    });
   }
 
   public async getPendingForUser(userId: string) {
@@ -23,6 +27,6 @@ export class PaymentRepository {
   }
 
   public async listPending() {
-    return prisma.payment.findMany({ where: { status: "PENDING" }, include: { user: true } });
+    return prisma.payment.findMany({ where: { status: "PENDING" }, include: { user: true, receipt: true } });
   }
 }
