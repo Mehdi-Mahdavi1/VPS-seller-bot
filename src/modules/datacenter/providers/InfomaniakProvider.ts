@@ -75,9 +75,23 @@ export class InfomaniakProvider implements DatacenterProvider {
         imageId: payload.imageRef,
         flavorId: payload.flavorRef,
       };
-    } catch (error) {
-      logger.error({ error, payload, networks: ["1729a205-fabb-45b2-b040-bb712aca40db", "546cce65-a380-45ac-b704-0383b7998262"], sshKey: env.INFOMANIAK_SSH_KEY ?? "dvrssh1" }, "Infomaniak server creation failed");
-      throw new Error("Infomaniak server creation failed");
+    } catch (error: any) {
+      const responseData = error?.response?.data;
+      const status = error?.response?.status;
+      logger.error(
+        {
+          error,
+          payload,
+          networks: ["1729a205-fabb-45b2-b040-bb712aca40db", "546cce65-a380-45ac-b704-0383b7998262"],
+          sshKey: env.INFOMANIAK_SSH_KEY ?? "dvrssh1",
+          status,
+          responseData,
+        },
+        "Infomaniak server creation failed"
+      );
+      const apiMessage = responseData?.message || responseData?.error || JSON.stringify(responseData || {});
+      const userMessage = status === 403 ? `Infomaniak API forbidden: ${apiMessage}` : `Infomaniak server creation failed: ${apiMessage}`;
+      throw new Error(userMessage);
     }
   }
 

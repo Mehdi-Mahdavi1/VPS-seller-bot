@@ -165,7 +165,7 @@ export class BotApp {
               .text("🔙 منوی اصلی", "main_menu"),
           });
         } else {
-          await ctx.editMessageText("❌ Server creation failed. Please try again later or contact support.", { reply_markup: buildMainMenuKeyboard() });
+          await ctx.editMessageText(`❌ ${error?.message ?? "Server creation failed."}`, { reply_markup: buildMainMenuKeyboard() });
         }
       }
     });
