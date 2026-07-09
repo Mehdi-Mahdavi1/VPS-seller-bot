@@ -19,6 +19,7 @@ export interface CreateServerPayload {
   imageRef: string;
   flavorRef: string;
   adminPass?: string;
+  user_data?: string;
 }
 
 export interface ServerAccessInfo {

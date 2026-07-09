@@ -67,6 +67,7 @@ export class InfomaniakProvider implements DatacenterProvider {
             { uuid: "1729a205-fabb-45b2-b040-bb712aca40db" },
             { uuid: "546cce65-a380-45ac-b704-0383b7998262" },
           ],
+          ...(payload.user_data && { user_data: payload.user_data }),
         },
       };
       const response = await this.client.post(SERVER_ENDPOINT, body);

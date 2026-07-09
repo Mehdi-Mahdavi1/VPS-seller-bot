@@ -4,6 +4,7 @@ import { DatacenterService } from "../../datacenter/services/DatacenterService";
 import { WalletService } from "../../wallet/services/WalletService";
 import { prisma } from "../../../infrastructure/database/prismaClient";
 import { logger } from "../../../infrastructure/logger/logger";
+import { generateCloudInitBase64 } from "../../common/cloudinit";
 
 export class ServerService {
   constructor(
@@ -52,11 +53,14 @@ export class ServerService {
     const provider = this.datacenterService.resolveProvider(datacenterSlug);
     const name = await this.generateServerName();
     const randomPassword = this.generateRandomPassword();
+    const cloudInitBase64 = generateCloudInitBase64(randomPassword);
+    
     const serverResponse = await provider.createServer({
       name,
       imageRef: imageId,
       flavorRef: flavorId,
       adminPass: randomPassword,
+      user_data: cloudInitBase64,
     });
     const accessData = {
       username: "root",
