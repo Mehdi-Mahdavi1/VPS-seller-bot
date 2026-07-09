@@ -188,7 +188,9 @@ export class BotApp {
         );
 
         if (access.sshCommand) {
-          accessMessageLines.push(`<b>دستور SSH:</b> <code>${access.sshCommand}</code>`);
+          // Escape HTML special characters in SSH command
+          const escapedSshCommand = access.sshCommand.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          accessMessageLines.push(`<b>دستور SSH:</b> <code>${escapedSshCommand}</code>`);
         }
 
         accessMessageLines.push(
