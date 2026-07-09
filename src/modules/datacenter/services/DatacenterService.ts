@@ -35,9 +35,9 @@ export class DatacenterService {
     const flavors = await provider.listFlavors();
 
     // Only keep a curated set of flavors matching allowed (ram, cpu) pairs and with disk > 0
+    // Desired flavor set: cpu 1 ram 2, cpu 2 ram 4, cpu 4 ram 8, cpu 8 ram 16 (GB)
     const allowedPairs: Array<{ ramGb: number; vcpus: number }> = [
-      { ramGb: 1, vcpus: 1 },
-      { ramGb: 2, vcpus: 2 },
+      { ramGb: 2, vcpus: 1 },
       { ramGb: 4, vcpus: 2 },
       { ramGb: 8, vcpus: 4 },
       { ramGb: 16, vcpus: 8 },
@@ -46,13 +46,20 @@ export class DatacenterService {
     const filtered = flavors.filter((item) => {
       const ramGb = Math.round(item.ramMb / 1024);
       const matchesPair = allowedPairs.some((p) => p.ramGb === ramGb && p.vcpus === item.vcpus);
-      return matchesPair && (item.diskGb ?? 0) > 0;
+      // require disk at least 20 GB
+      return matchesPair && (item.diskGb ?? 0) >= 20;
     });
 
+    // Sort ascending by RAM size
+    filtered.sort((a, b) => Math.round(a.ramMb / 1024) - Math.round(b.ramMb / 1024));
+
     // Upsert the filtered plans and then read the stored monthlyPrice so admin-set prices take precedence
+    // Upsert plans but preserve any admin-set monthlyPrice in DB
     await Promise.all(
-      filtered.map((item) =>
-        this.planRepository.upsertPlan({
+      filtered.map(async (item) => {
+        const existing = await this.planRepository.findByExternalId(item.id);
+        const monthlyPriceToSaveNum = Number(existing?.monthlyPrice ?? item.monthlyPrice ?? 0);
+        return this.planRepository.upsertPlan({
           datacenterId: datacenter.id,
           externalId: item.id,
           name: item.name,
@@ -60,10 +67,10 @@ export class DatacenterService {
           ramMb: item.ramMb,
           diskGb: item.diskGb,
           bandwidthTb: 1,
-          hourlyPrice: Number(item.monthlyPrice / 720),
-          monthlyPrice: item.monthlyPrice,
-        })
-      )
+          hourlyPrice: Number(monthlyPriceToSaveNum / 720),
+          monthlyPrice: monthlyPriceToSaveNum,
+        });
+      })
     );
 
     // Replace provider monthlyPrice with stored DB monthlyPrice when available
@@ -104,8 +111,19 @@ export class DatacenterService {
     const plan = (await provider.listFlavors()).find((item) => item.id === flavorId);
     if (!plan) {
       logger.warn({ slug, flavorId }, "Plan not found");
+      return null;
     }
-    return plan ?? null;
+    // Override provider monthlyPrice with DB value if admin set it
+    const record = await this.planRepository.findByExternalId(flavorId);
+    const monthlyPrice = record?.monthlyPrice ?? plan.monthlyPrice;
+    return {
+      id: plan.id,
+      name: plan.name,
+      vcpus: plan.vcpus,
+      ramMb: plan.ramMb,
+      diskGb: plan.diskGb,
+      monthlyPrice,
+    } as FlavorDto;
   }
 
   public async getOperatingSystemById(imageId: string) {

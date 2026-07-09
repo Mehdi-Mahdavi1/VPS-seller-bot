@@ -1,5 +1,6 @@
 import { InlineKeyboard } from "grammy";
 import { FlavorDto, ImageDto } from "../../modules/common/types";
+import { formatCurrency } from "../../modules/common/formatter";
 
 export const buildMainMenuKeyboard = (): InlineKeyboard =>
   new InlineKeyboard()
@@ -22,7 +23,7 @@ export const buildDatacenterKeyboard = (datacenters: Array<{ slug: string; name:
 
 export const buildCreateServerKeyboard = (slug: string, plans: FlavorDto[]) => {
   const keyboard = new InlineKeyboard();
-  plans.forEach((plan) => keyboard.text(`${plan.name} | ${plan.vcpus} Core | ${plan.ramMb / 1024} GB | 1 TB | ${plan.monthlyPrice.toFixed(2)} $`, `plan_select:${slug}:${plan.id}`).row());
+  plans.forEach((plan) => keyboard.text(`${plan.name} | ${plan.vcpus} Core | ${plan.ramMb / 1024} GB | 1 TB | ${formatCurrency(plan.monthlyPrice ?? 0)}`, `plan_select:${slug}:${plan.id}`).row());
   keyboard.text("🔙 Main menu", "main_menu");
   return keyboard;
 };
