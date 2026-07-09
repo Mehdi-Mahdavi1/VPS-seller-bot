@@ -200,10 +200,9 @@ export class BotApp {
 
         const accessMessage = accessMessageLines.join("\n");
 
-        // Send complete info as NEW message (not edited)
+        // Send complete info as NEW message (not edited) - WITHOUT buttons
         await ctx.api.sendMessage(ctx.from.id, accessMessage, {
           parse_mode: "HTML",
-          reply_markup: buildMainMenuKeyboard(),
         });
 
         // Clean up token

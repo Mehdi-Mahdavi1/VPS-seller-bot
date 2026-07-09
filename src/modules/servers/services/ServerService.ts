@@ -99,7 +99,6 @@ export class ServerService {
         status: "ACTIVE",
         ipv4Address: accessData.ipv4Address,
         ipv6Address: accessData.ipv6Address,
-        password: randomPassword,
         hourlyPrice: hourlyPrice,
       },
     });
