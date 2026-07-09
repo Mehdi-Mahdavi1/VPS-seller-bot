@@ -97,11 +97,38 @@ export class ServerService {
         externalFlavorId: serverResponse.flavorId,
         name,
         status: "ACTIVE",
+        ipv4Address: accessData.ipv4Address,
+        ipv6Address: accessData.ipv6Address,
+        password: randomPassword,
         hourlyPrice: hourlyPrice,
       },
     });
 
     logger.info({ serverId: server.id, userId, datacenterSlug, accessData }, "Server persisted in database");
-    return { server, accessData };
+    return { server, accessData, randomPassword };
+  }
+
+  public async getServerAccess(serverId: string): Promise<{ ipv4Address?: string; ipv6Address?: string; sshCommand?: string } | null> {
+    const server = await prisma.server.findUnique({
+      where: { id: serverId },
+    });
+    
+    if (!server) {
+      return null;
+    }
+
+    try {
+      const provider = this.datacenterService.resolveProvider(server.datacenterId);
+      // Assuming provider has a method to get server details
+      // For now, we'll return partial data
+      return {
+        ipv4Address: undefined,
+        ipv6Address: undefined,
+        sshCommand: undefined,
+      };
+    } catch (error) {
+      logger.error({ error, serverId }, "Failed to get server access info");
+      return null;
+    }
   }
 }

@@ -18,8 +18,9 @@ import {
 } from "./keyboard/menus";
 import { formatCurrency } from "../modules/common/formatter";
 import { env } from "../config/env";
-import { createSelectionState, getSelectionState, updateSelectionState } from "./callbackStore";
+import { createSelectionState, getSelectionState, updateSelectionState, deleteSelectionState } from "./callbackStore";
 import { setPendingPrice, getPendingPrice, clearPendingPrice } from "./adminPriceStore";
+import { prisma } from "../infrastructure/database/prismaClient";
 
 function parseCallbackData(data: string): string[] {
   return data.split(":");
@@ -153,21 +154,62 @@ export class BotApp {
       try {
         const user = await ensureAppUser(ctx);
         const billingMode = selection.billingMode ?? "HOURLY";
+
+        // Send waiting message - edit current message
+        await ctx.editMessageText("⏳ <b>سرور شما ایجاد می‌شود...</b>\n\nلطفاً منتظر بمانید.\nاطلاعات سرور بزودی ارسال خواهد شد.", {
+          parse_mode: "HTML",
+          reply_markup: new InlineKeyboard(),
+        });
+
+        // Create server
         const result = await serverService.createServer(user.id, selection.slug, selection.flavorId, selection.imageId, billingMode);
         const server = result.server;
         const access = result.accessData;
-        const accessMessage = [
-          "✅ Server created successfully!",
-          `Server name: ${server.name}`,
-          `Status: ${server.status}`,
-          `IP v4: ${access.ipv4Address ?? "Pending"}`,
-          `IP v6: ${access.ipv6Address ?? "Pending"}`,
-          `Username: ${access.username}`,
-          `Password: ${access.password}`,
-          `SSH command: ${access.sshCommand}`,
-          "Use the PEM file from the project root: dvrssh1.pem",
-        ].join("\n");
-        await ctx.editMessageText(accessMessage, { reply_markup: buildMainMenuKeyboard() });
+        const password = result.randomPassword;
+
+        // Prepare access message
+        const accessMessageLines = [
+          "✅ <b>سرور شما آماده شد!</b>",
+          "",
+          `<b>نام سرور:</b> <code>${server.name}</code>`,
+          `<b>وضعیت:</b> ${server.status}`,
+        ];
+
+        if (access.ipv4Address) {
+          accessMessageLines.push(`<b>آدرس IPv4:</b> <code>${access.ipv4Address}</code>`);
+        }
+        if (access.ipv6Address) {
+          accessMessageLines.push(`<b>آدرس IPv6:</b> <code>${access.ipv6Address}</code>`);
+        }
+
+        accessMessageLines.push(
+          `<b>نام کاربری:</b> <code>${access.username}</code>`,
+          `<b>رمز عبور:</b> <code>${password}</code>`,
+        );
+
+        if (access.sshCommand) {
+          accessMessageLines.push(`<b>دستور SSH:</b> <code>${access.sshCommand}</code>`);
+        }
+
+        accessMessageLines.push(
+          "",
+          "ℹ️ برای اتصال SSH، فایل <code>dvrssh1.pem</code> را از پروژه استفاده کنید.",
+          "",
+          access.ipv4Address ? "✅ شما می‌توانید اتصال SSH را شروع کنید." : "⏳ آدرس IP هنوز در دست دریافت است. لطفاً چند دقیقه منتظر بمانید.",
+        );
+
+        const accessMessage = accessMessageLines.join("\n");
+
+        // Send complete info as NEW message (not edited)
+        await ctx.api.sendMessage(ctx.from.id, accessMessage, {
+          parse_mode: "HTML",
+          reply_markup: buildMainMenuKeyboard(),
+        });
+
+        // Clean up token
+        deleteSelectionState(token);
+
+        logger.info({ serverId: server.id, userId: user.id, ipv4: access.ipv4Address, ipv6: access.ipv6Address }, "Server created and info sent to user");
       } catch (error: any) {
         logger.error(error, "Server creation failed");
         const insufficientBalance = error?.message?.includes("Insufficient wallet balance");

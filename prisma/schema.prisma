@@ -131,6 +131,9 @@ model Server {
   externalFlavorId String
   name             String
   status           ServerStatus   @default(PENDING)
+  ipv4Address      String?
+  ipv6Address      String?
+  password         String?
   hourlyPrice      Decimal
   billingRecords   ServerBilling[]
   createdAt        DateTime       @default(now())
