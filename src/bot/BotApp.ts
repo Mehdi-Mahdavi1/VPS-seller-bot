@@ -266,19 +266,28 @@ export class BotApp {
         return;
       }
       const payment = pendingPayments[0];
+      const caption = `📝 Pending payment\nUser: ${payment.user.telegramId}\nAmount: ${formatCurrency(Number(payment.amount))}\nMethod: ${payment.method}\nStatus: ${payment.status}`;
+      const keyboard = buildAdminPaymentKeyboard(payment.id);
+
+      try {
+        await ctx.deleteMessage(ctx.callbackQuery.message.message_id).catch(() => undefined);
+      } catch (error) {
+        logger.warn({ error }, "Unable to delete payment review message");
+      }
+
       if (payment.receipt?.filePath) {
         try {
           await ctx.api.sendPhoto(telegramId, payment.receipt.filePath, {
-            caption: `🧾 Receipt for payment ${payment.id}\nUser: ${payment.user.telegramId}\nAmount: ${formatCurrency(Number(payment.amount))}`,
+            caption,
+            reply_markup: keyboard,
           });
         } catch (error) {
           logger.warn({ error, paymentId: payment.id }, "Unable to send payment receipt to admin");
+          await ctx.reply(caption, { reply_markup: keyboard });
         }
+      } else {
+        await ctx.reply(caption, { reply_markup: keyboard });
       }
-      await ctx.editMessageText(
-        `📝 Pending payment\nUser: ${payment.user.telegramId}\nAmount: ${formatCurrency(Number(payment.amount))}\nMethod: ${payment.method}\nStatus: ${payment.status}`,
-        { reply_markup: buildAdminPaymentKeyboard(payment.id) }
-      );
     });
 
     bot.callbackQuery("admin_manage_plans", async (ctx: any) => {
