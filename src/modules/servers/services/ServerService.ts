@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { ServerRepository } from "../repositories/ServerRepository";
 import { DatacenterService } from "../../datacenter/services/DatacenterService";
 import { WalletService } from "../../wallet/services/WalletService";
@@ -14,6 +15,12 @@ export class ServerService {
   private async generateServerName(): Promise<string> {
     const totalServers = await this.serverRepository.count();
     return `srv-${10000 + totalServers + 1}`;
+  }
+
+  private generateRandomPassword(length = 20): string {
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+    const bytes = randomBytes(length);
+    return Array.from(bytes, (byte, index) => chars[byte % chars.length]).join("");
   }
 
   public async createServer(userId: string, datacenterSlug: string, flavorId: string, imageId: string, billingMode: "HOURLY" | "MONTHLY" = "HOURLY") {
@@ -44,11 +51,20 @@ export class ServerService {
 
     const provider = this.datacenterService.resolveProvider(datacenterSlug);
     const name = await this.generateServerName();
+    const randomPassword = this.generateRandomPassword();
     const serverResponse = await provider.createServer({
       name,
       imageRef: imageId,
       flavorRef: flavorId,
+      adminPass: randomPassword,
     });
+    const accessData = {
+      username: "root",
+      password: serverResponse.access?.password ?? randomPassword,
+      ipv4Address: serverResponse.access?.ipv4Address,
+      ipv6Address: serverResponse.access?.ipv6Address,
+      sshCommand: serverResponse.access?.ipv4Address ? `ssh -i dvrssh1.pem root@${serverResponse.access.ipv4Address}` : `ssh -i dvrssh1.pem root@<server-ip>`,
+    };
 
     // Determine pricing and charge user wallet
     const monthlyPrice = Number(planRecord?.monthlyPrice ?? 0);
@@ -80,7 +96,7 @@ export class ServerService {
       },
     });
 
-    logger.info({ serverId: server.id, userId, datacenterSlug }, "Server persisted in database");
-    return server;
+    logger.info({ serverId: server.id, userId, datacenterSlug, accessData }, "Server persisted in database");
+    return { server, accessData };
   }
 }

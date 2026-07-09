@@ -153,8 +153,21 @@ export class BotApp {
       try {
         const user = await ensureAppUser(ctx);
         const billingMode = selection.billingMode ?? "HOURLY";
-        const server = await serverService.createServer(user.id, selection.slug, selection.flavorId, selection.imageId, billingMode);
-        await ctx.editMessageText(`✅ Server created successfully!\nServer name: ${server.name}\nStatus: ${server.status}`, { reply_markup: buildMainMenuKeyboard() });
+        const result = await serverService.createServer(user.id, selection.slug, selection.flavorId, selection.imageId, billingMode);
+        const server = result.server;
+        const access = result.accessData;
+        const accessMessage = [
+          "✅ Server created successfully!",
+          `Server name: ${server.name}`,
+          `Status: ${server.status}`,
+          `IP v4: ${access.ipv4Address ?? "Pending"}`,
+          `IP v6: ${access.ipv6Address ?? "Pending"}`,
+          `Username: ${access.username}`,
+          `Password: ${access.password}`,
+          `SSH command: ${access.sshCommand}`,
+          "Use the PEM file from the project root: dvrssh1.pem",
+        ].join("\n");
+        await ctx.editMessageText(accessMessage, { reply_markup: buildMainMenuKeyboard() });
       } catch (error: any) {
         logger.error(error, "Server creation failed");
         const insufficientBalance = error?.message?.includes("Insufficient wallet balance");

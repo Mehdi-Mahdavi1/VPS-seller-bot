@@ -18,4 +18,13 @@ export interface CreateServerPayload {
   name: string;
   imageRef: string;
   flavorRef: string;
+  adminPass?: string;
+}
+
+export interface ServerAccessInfo {
+  username: string;
+  password: string;
+  ipv4Address?: string;
+  ipv6Address?: string;
+  sshCommand?: string;
 }

@@ -54,7 +54,7 @@ export class InfomaniakProvider implements DatacenterProvider {
     }
   }
 
-  public async createServer(payload: CreateServerPayload): Promise<{ id: string; status: string; imageId: string; flavorId: string }> {
+  public async createServer(payload: CreateServerPayload): Promise<{ id: string; status: string; imageId: string; flavorId: string; access?: { username: string; password?: string; ipv4Address?: string; ipv6Address?: string; sshCommand?: string } }> {
     try {
       const body = {
         server: {
@@ -62,6 +62,7 @@ export class InfomaniakProvider implements DatacenterProvider {
           imageRef: payload.imageRef,
           flavorRef: payload.flavorRef,
           key_name: env.INFOMANIAK_SSH_KEY ?? "dvrssh1",
+          adminPass: payload.adminPass,
           networks: [
             { uuid: "1729a205-fabb-45b2-b040-bb712aca40db" },
             { uuid: "546cce65-a380-45ac-b704-0383b7998262" },
@@ -69,11 +70,22 @@ export class InfomaniakProvider implements DatacenterProvider {
         },
       };
       const response = await this.client.post(SERVER_ENDPOINT, body);
+      const server = response.data.server ?? response.data;
+      const addresses = server?.addresses ?? [];
+      const ipv4Address = addresses.find((item: any) => item?.version === 4 || item?.type === "ipv4")?.addr ?? addresses.find((item: any) => item?.version === 4 || item?.type === "ipv4")?.address ?? server?.accessIPv4 ?? server?.ipv4 ?? server?.access_ip_v4 ?? undefined;
+      const ipv6Address = addresses.find((item: any) => item?.version === 6 || item?.type === "ipv6")?.addr ?? addresses.find((item: any) => item?.version === 6 || item?.type === "ipv6")?.address ?? server?.accessIPv6 ?? server?.ipv6 ?? server?.access_ip_v6 ?? undefined;
       return {
-        id: response.data.server?.id ?? response.data?.id,
-        status: response.data.server?.status ?? "ACTIVE",
+        id: server?.id ?? response.data?.id,
+        status: server?.status ?? "ACTIVE",
         imageId: payload.imageRef,
         flavorId: payload.flavorRef,
+        access: {
+          username: "root",
+          password: server?.adminPass ?? server?.password ?? undefined,
+          ipv4Address,
+          ipv6Address,
+          sshCommand: ipv4Address ? `ssh -i dvrssh1.pem root@${ipv4Address}` : undefined,
+        },
       };
     } catch (error: any) {
       const responseData = error?.response?.data;
