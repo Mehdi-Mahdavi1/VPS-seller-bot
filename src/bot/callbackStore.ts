@@ -4,13 +4,15 @@ type SelectionState = {
   slug: string;
   flavorId: string;
   imageId?: string;
+  billingMode?: "HOURLY" | "MONTHLY";
 };
 
 const callbackSelectionStore = new Map<string, SelectionState>();
 
 export function createSelectionState(initialState: Omit<SelectionState, "imageId">): string {
   const token = randomBytes(8).toString("hex");
-  callbackSelectionStore.set(token, initialState);
+  const state: SelectionState = { ...initialState, billingMode: "HOURLY" };
+  callbackSelectionStore.set(token, state);
   return token;
 }
 

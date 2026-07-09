@@ -16,7 +16,7 @@ export class ServerService {
     return `srv-${10000 + totalServers + 1}`;
   }
 
-  public async createServer(userId: string, datacenterSlug: string, flavorId: string, imageId: string) {
+  public async createServer(userId: string, datacenterSlug: string, flavorId: string, imageId: string, billingMode: "HOURLY" | "MONTHLY" = "HOURLY") {
     await Promise.all([
       this.datacenterService.listPlans(datacenterSlug),
       this.datacenterService.listOperatingSystems(datacenterSlug),
@@ -50,6 +50,20 @@ export class ServerService {
       flavorRef: flavorId,
     });
 
+    // Determine pricing and charge user wallet
+    const monthlyPrice = Number(planRecord?.monthlyPrice ?? 0);
+    const hourlyPrice = Number(monthlyPrice / 720);
+
+    const chargeAmount = billingMode === "MONTHLY" ? monthlyPrice : hourlyPrice;
+    // Ensure user has enough balance
+    const hasEnough = await this.walletService.hasEnoughBalance(userId, chargeAmount);
+    if (!hasEnough) {
+      throw new Error("Insufficient wallet balance for selected billing mode.");
+    }
+
+    // Deduct payment from wallet
+    await this.walletService.charge(userId, chargeAmount, `Server purchase ${name} (${billingMode})`);
+
     const server = await prisma.server.create({
       data: {
         userId,
@@ -62,7 +76,7 @@ export class ServerService {
         externalFlavorId: serverResponse.flavorId,
         name,
         status: "ACTIVE",
-        hourlyPrice: Number(planDetail.monthlyPrice / 720),
+        hourlyPrice: hourlyPrice,
       },
     });
 

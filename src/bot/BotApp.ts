@@ -32,7 +32,10 @@ async function ensureAppUser(ctx: any) {
   return userService.ensureUser(telegramId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
 }
 
-function buildServerDetailsMessage(plan: any, osName: string | null): string {
+function buildServerDetailsMessage(plan: any, osName: string | null, billingMode: "HOURLY" | "MONTHLY" = "HOURLY"): string {
+  const monthly = Number(plan.monthlyPrice ?? 0);
+  const hourly = monthly / 720;
+  const priceLine = billingMode === "MONTHLY" ? `${formatCurrency(monthly)} / month` : `${formatCurrency(hourly)} / hour`;
   return [
     `🖥 <b>Plan details</b>`,
     `Name: ${plan.name}`,
@@ -40,7 +43,7 @@ function buildServerDetailsMessage(plan: any, osName: string | null): string {
     `RAM: ${plan.ramMb / 1024} GB`,
     `Disk: ${plan.diskGb} GB`,
     `Traffic: 1 TB`,
-    `Price: ${formatCurrency((plan.monthlyPrice ?? 0) / 720)} / hour`,
+    `Price: ${priceLine}`,
     `Selected OS: ${osName ?? "Not Selected"}`,
   ].join("\n");
 }
@@ -88,11 +91,13 @@ export class BotApp {
         return;
       }
       const token = createSelectionState({ slug, flavorId });
-      const message = buildServerDetailsMessage(plan, null);
+      const message = buildServerDetailsMessage(plan, null, "HOURLY");
       const keyboard = new InlineKeyboard()
         .text("💿 Select Operating System", `select_os:${token}`)
         .row()
-        .text("✅ Create Server", `create_server_confirm:${token}`)
+        .text("🔁 Billing: Hourly", `toggle_billing:${token}`)
+        .row()
+        .text("✅ Create Server (Charge hourly)", `create_server_confirm:${token}`)
         .row()
         .text("🔙 Main menu", "main_menu");
       await ctx.editMessageText(message, { reply_markup: keyboard, parse_mode: "HTML" });
@@ -100,7 +105,7 @@ export class BotApp {
 
     bot.callbackQuery(/^select_os:(.*)$/, async (ctx: any) => {
       const [, token] = parseCallbackData(ctx.callbackQuery.data!);
-      const selection = getSelectionState(token);
+      let selection = getSelectionState(token);
       if (!selection) {
         await ctx.answerCallbackQuery({ text: "Selection expired. Please choose a plan again.", show_alert: true });
         return;
@@ -112,7 +117,7 @@ export class BotApp {
 
     bot.callbackQuery(/^os_select:(.*):(.*)$/, async (ctx: any) => {
       const [, token, imageId] = parseCallbackData(ctx.callbackQuery.data!);
-      const selection = getSelectionState(token);
+      let selection = getSelectionState(token);
       if (!selection) {
         await ctx.answerCallbackQuery({ text: "Selection expired. Please choose a plan again.", show_alert: true });
         return;
@@ -124,11 +129,14 @@ export class BotApp {
         return;
       }
       updateSelectionState(token, { imageId });
-      const message = buildServerDetailsMessage(plan, os.name);
+      selection = getSelectionState(token)!;
+      const message = buildServerDetailsMessage(plan, os.name, selection.billingMode ?? "HOURLY");
       const keyboard = new InlineKeyboard()
         .text("💿 Select Operating System", `select_os:${token}`)
         .row()
-        .text("✅ Create Server", `create_server_confirm:${token}`)
+        .text(selection.billingMode === "MONTHLY" ? "✅ Create Server (Charge monthly)" : "✅ Create Server (Charge hourly)", `create_server_confirm:${token}`)
+        .row()
+        .text(selection.billingMode === "MONTHLY" ? "💲 Billing: Monthly" : "💲 Billing: Hourly", `toggle_billing:${token}`)
         .row()
         .text("🔙 Main menu", "main_menu");
       await ctx.editMessageText(message, { reply_markup: keyboard, parse_mode: "HTML" });
@@ -143,12 +151,36 @@ export class BotApp {
       }
       try {
         const user = await ensureAppUser(ctx);
-        const server = await serverService.createServer(user.id, selection.slug, selection.flavorId, selection.imageId);
+        const billingMode = selection.billingMode ?? "HOURLY";
+        const server = await serverService.createServer(user.id, selection.slug, selection.flavorId, selection.imageId, billingMode);
         await ctx.editMessageText(`✅ Server created successfully!\nServer name: ${server.name}\nStatus: ${server.status}`, { reply_markup: buildMainMenuKeyboard() });
       } catch (error) {
         logger.error(error, "Server creation failed");
         await ctx.editMessageText("❌ Server creation failed. Please try again later or contact support.", { reply_markup: buildMainMenuKeyboard() });
       }
+    });
+
+    bot.callbackQuery(/^toggle_billing:(.*)$/, async (ctx: any) => {
+      const [, token] = parseCallbackData(ctx.callbackQuery.data!);
+      const selection = getSelectionState(token);
+      if (!selection) {
+        await ctx.answerCallbackQuery({ text: "Selection expired. Please choose a plan again.", show_alert: true });
+        return;
+      }
+      const newMode = selection.billingMode === "MONTHLY" ? "HOURLY" : "MONTHLY";
+      updateSelectionState(token, { billingMode: newMode });
+      const plan = await datacenterServiceInstance.getPlanById(selection.slug, selection.flavorId);
+      const osName = selection.imageId ? (await datacenterServiceInstance.getOperatingSystemById(selection.imageId))?.name : null;
+      const message = buildServerDetailsMessage(plan, osName ?? null, newMode);
+      const keyboard = new InlineKeyboard()
+        .text("💿 Select Operating System", `select_os:${token}`)
+        .row()
+        .text(newMode === "MONTHLY" ? "✅ Create Server (Charge monthly)" : "✅ Create Server (Charge hourly)", `create_server_confirm:${token}`)
+        .row()
+        .text(newMode === "MONTHLY" ? "💲 Billing: Monthly" : "💲 Billing: Hourly", `toggle_billing:${token}`)
+        .row()
+        .text("🔙 Main menu", "main_menu");
+      await ctx.editMessageText(message, { reply_markup: keyboard, parse_mode: "HTML" });
     });
 
     bot.callbackQuery("wallet_menu", async (ctx: any) => {
@@ -249,7 +281,7 @@ export class BotApp {
         return;
       }
       setPendingPrice(telegramId, externalId);
-      await ctx.editMessageText("Please send the new monthly price in IRR as a message (numbers only).\nExample: 2000000");
+      await ctx.editMessageText("Please send the new monthly price in USD as a message (numbers allowed, decimals OK). Example: 20.5");
     });
 
     // Handle admin text messages for setting price
@@ -263,9 +295,9 @@ export class BotApp {
         return;
       }
       const text = ctx.message?.text?.trim();
-      const price = Number(text?.replace(/[^0-9]/g, ""));
+      const price = Number(text?.replace(/[^0-9.]/g, ""));
       if (!price || isNaN(price) || price <= 0) {
-        await ctx.reply("Invalid price. Please send a numeric monthly price in IRR.");
+        await ctx.reply("Invalid price. Please send a numeric monthly price in USD (e.g. 20.5).");
         return;
       }
       try {
