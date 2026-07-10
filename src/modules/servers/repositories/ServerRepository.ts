@@ -1,5 +1,5 @@
 import { prisma } from "../../../infrastructure/database/prismaClient";
-import type { Server as ServerModel, ServerStatus, Wallet, ServerPlan, User, Datacenter } from "@prisma/client";
+import type { Server as ServerModel, ServerStatus, Wallet, ServerPlan, User, Datacenter, OperatingSystem } from "@prisma/client";
 
 export class ServerRepository {
   public async count(): Promise<number> {
@@ -34,6 +34,18 @@ export class ServerRepository {
     });
   }
 
+  public async findUserServers(userId: string): Promise<Array<ServerModel & { plan: ServerPlan | null; datacenter: Datacenter | null; operatingSystem: OperatingSystem | null }>> {
+    return prisma.server.findMany({
+      where: { userId },
+      include: {
+        plan: true,
+        datacenter: true,
+        operatingSystem: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   public async updateStatus(serverId: string, status: ServerStatus): Promise<ServerModel> {
     return prisma.server.update({ where: { id: serverId }, data: { status } });
   }
@@ -55,6 +67,18 @@ export class ServerRepository {
   public async findServerById(serverId: string): Promise<ServerModel | null> {
     return prisma.server.findUnique({
       where: { id: serverId },
+    });
+  }
+
+  public async findServerByIdWithRelations(serverId: string): Promise<(ServerModel & { plan: ServerPlan | null; datacenter: Datacenter | null; operatingSystem: OperatingSystem | null; user: User | null }) | null> {
+    return prisma.server.findUnique({
+      where: { id: serverId },
+      include: {
+        plan: true,
+        datacenter: true,
+        operatingSystem: true,
+        user: true,
+      },
     });
   }
 }

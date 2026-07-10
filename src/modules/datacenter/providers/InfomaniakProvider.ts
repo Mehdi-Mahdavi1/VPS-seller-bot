@@ -119,7 +119,51 @@ export class InfomaniakProvider implements DatacenterProvider {
   }
 
   public async stopServer(externalServerId: string): Promise<void> {
-    logger.info({ externalServerId }, "Placeholder stopServer called for Infomaniak");
-    // Implementation note: add server stop or delete actions when API details are available.
+    try {
+      await this.client.post(`${SERVER_ENDPOINT}/${externalServerId}/action`, {
+        "os-stop": null,
+      });
+      logger.info({ externalServerId }, "Server stopped successfully");
+    } catch (error) {
+      logger.error({ error, externalServerId }, "Infomaniak stopServer failed");
+      throw error;
+    }
+  }
+
+  public async startServer(externalServerId: string): Promise<void> {
+    try {
+      await this.client.post(`${SERVER_ENDPOINT}/${externalServerId}/action`, {
+        "os-start": null,
+      });
+      logger.info({ externalServerId }, "Server started successfully");
+    } catch (error) {
+      logger.error({ error, externalServerId }, "Infomaniak startServer failed");
+      throw error;
+    }
+  }
+
+  public async rebootServer(externalServerId: string, type: 'SOFT' | 'HARD'): Promise<void> {
+    try {
+      const rebootType = type === 'HARD' ? 'HARD' : 'SOFT';
+      await this.client.post(`${SERVER_ENDPOINT}/${externalServerId}/action`, {
+        reboot: {
+          type: rebootType,
+        },
+      });
+      logger.info({ externalServerId, type: rebootType }, "Server rebooted successfully");
+    } catch (error) {
+      logger.error({ error, externalServerId, type }, "Infomaniak rebootServer failed");
+      throw error;
+    }
+  }
+
+  public async deleteServer(externalServerId: string): Promise<void> {
+    try {
+      await this.client.delete(`${SERVER_ENDPOINT}/${externalServerId}`);
+      logger.info({ externalServerId }, "Server deleted successfully");
+    } catch (error) {
+      logger.error({ error, externalServerId }, "Infomaniak deleteServer failed");
+      throw error;
+    }
   }
 }

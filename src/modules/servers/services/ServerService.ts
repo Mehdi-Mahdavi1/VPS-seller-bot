@@ -140,4 +140,63 @@ export class ServerService {
       },
     });
   }
+
+  public async getUserServers(userId: string) {
+    return this.serverRepository.findUserServers(userId);
+  }
+
+  public async getServerDetails(serverId: string) {
+    return this.serverRepository.findServerByIdWithRelations(serverId);
+  }
+
+  public async stopServer(serverId: string): Promise<void> {
+    const server = await this.serverRepository.findServerById(serverId);
+    if (!server) throw new Error("Server not found");
+    
+    const provider = this.datacenterService.resolveProvider(server.datacenterId);
+    if (!provider || typeof provider.stopServer !== 'function') {
+      throw new Error("Provider does not support stopServer");
+    }
+    
+    await provider.stopServer(server.externalServerId);
+    await this.serverRepository.updateStatus(serverId, 'STOPPED');
+  }
+
+  public async startServer(serverId: string): Promise<void> {
+    const server = await this.serverRepository.findServerById(serverId);
+    if (!server) throw new Error("Server not found");
+    
+    const provider = this.datacenterService.resolveProvider(server.datacenterId);
+    if (!provider || typeof provider.startServer !== 'function') {
+      throw new Error("Provider does not support startServer");
+    }
+    
+    await provider.startServer(server.externalServerId);
+    await this.serverRepository.updateStatus(serverId, 'ACTIVE');
+  }
+
+  public async rebootServer(serverId: string, type: 'SOFT' | 'HARD' = 'SOFT'): Promise<void> {
+    const server = await this.serverRepository.findServerById(serverId);
+    if (!server) throw new Error("Server not found");
+    
+    const provider = this.datacenterService.resolveProvider(server.datacenterId);
+    if (!provider || typeof provider.rebootServer !== 'function') {
+      throw new Error("Provider does not support rebootServer");
+    }
+    
+    await provider.rebootServer(server.externalServerId, type);
+  }
+
+  public async deleteServer(serverId: string): Promise<void> {
+    const server = await this.serverRepository.findServerById(serverId);
+    if (!server) throw new Error("Server not found");
+    
+    const provider = this.datacenterService.resolveProvider(server.datacenterId);
+    if (!provider || typeof provider.deleteServer !== 'function') {
+      throw new Error("Provider does not support deleteServer");
+    }
+    
+    await provider.deleteServer(server.externalServerId);
+    await this.serverRepository.updateStatus(serverId, 'DELETED');
+  }
 }

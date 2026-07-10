@@ -54,3 +54,24 @@ export const buildPaymentAmountKeyboard = (): InlineKeyboard =>
 
 export const buildAdminPaymentKeyboard = (paymentId: string): InlineKeyboard =>
   new InlineKeyboard().text("✅ Approve", `admin_payment:approve:${paymentId}`).row().text("❌ Reject", `admin_payment:reject:${paymentId}`).row().text("⬅️ Main menu", "main_menu");
+
+export const buildServersListKeyboard = (servers: Array<{ id: string; name: string }>): InlineKeyboard => {
+  const keyboard = new InlineKeyboard();
+  servers.forEach((server) => {
+    keyboard.text(`🖥 ${server.name}`, `server_view:${server.id}`).row();
+  });
+  keyboard.text("🔙 Main menu", "main_menu");
+  return keyboard;
+};
+
+export const buildServerDetailsKeyboard = (serverId: string): InlineKeyboard =>
+  new InlineKeyboard()
+    .text("▶️ Start", `server_action:${serverId}:start`)
+    .text("⏹️ Stop", `server_action:${serverId}:stop`)
+    .row()
+    .text("🔄 Soft Reboot", `server_action:${serverId}:reboot_soft`)
+    .text("⚡ Hard Reboot", `server_action:${serverId}:reboot_hard`)
+    .row()
+    .text("🗑️ Delete", `server_action:${serverId}:delete`)
+    .row()
+    .text("🔙 Back to Servers", "my_servers");

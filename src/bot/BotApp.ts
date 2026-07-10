@@ -15,6 +15,8 @@ import {
   buildPaymentMethodKeyboard,
   buildDatacenterKeyboard,
   buildAdminPaymentKeyboard,
+  buildServersListKeyboard,
+  buildServerDetailsKeyboard,
 } from "./keyboard/menus";
 import { formatCurrency } from "../modules/common/formatter";
 import { env } from "../config/env";
@@ -437,6 +439,157 @@ export class BotApp {
       } catch (error: any) {
         logger.error({ error }, "Admin payment action failed");
         await ctx.answerCallbackQuery({ text: error?.message ?? "Action failed.", show_alert: true });
+      }
+    });
+
+    bot.callbackQuery("my_servers", async (ctx: any) => {
+      try {
+        const user = await ensureAppUser(ctx);
+        const servers = await serverService.getUserServers(user.id);
+        
+        if (servers.length === 0) {
+          await ctx.editMessageText("📦 <b>My Servers</b>\n\nYou don't have any servers yet. Create one to get started!", {
+            reply_markup: new InlineKeyboard().text("🖥 Create Server", "create_server").row().text("🔙 Main menu", "main_menu"),
+            parse_mode: "HTML",
+          });
+          return;
+        }
+
+        const serverList = servers.map(s => `🖥 ${s.name} (${s.status})`).join("\n");
+        await ctx.editMessageText(`📦 <b>My Servers</b> (${servers.length})\n\n${serverList}\n\nSelect a server to view details and manage it:`, {
+          reply_markup: buildServersListKeyboard(servers),
+          parse_mode: "HTML",
+        });
+      } catch (error) {
+        logger.error({ error }, "Failed to list user servers");
+        await ctx.answerCallbackQuery({ text: "Failed to load servers.", show_alert: true });
+      }
+    });
+
+    bot.callbackQuery(/^server_view:(.*)$/, async (ctx: any) => {
+      try {
+        const [, serverId] = parseCallbackData(ctx.callbackQuery.data!);
+        const server = await serverService.getServerDetails(serverId);
+        
+        if (!server) {
+          await ctx.answerCallbackQuery({ text: "Server not found.", show_alert: true });
+          return;
+        }
+
+        const user = await ensureAppUser(ctx);
+        if (server.userId !== user.id) {
+          await ctx.answerCallbackQuery({ text: "Unauthorized.", show_alert: true });
+          return;
+        }
+
+        const statusEmoji = server.status === 'ACTIVE' ? '🟢' : server.status === 'STOPPED' ? '🔴' : '⚪';
+        const message = [
+          `<b>📊 Server: ${server.name}</b>`,
+          ``,
+          `<b>📋 وضعیت سرور</b>`,
+          `${statusEmoji} <b>Status:</b> ${server.status}`,
+          `⏱️ <b>Created:</b> ${server.createdAt.toLocaleDateString('fa-IR')}`,
+          ``,
+          `<b>💻 Server Specs</b>`,
+          `🔧 <b>Plan:</b> ${server.plan?.name}`,
+          `💾 <b>CPU:</b> ${server.plan?.vcpus} Core(s)`,
+          `🎛️ <b>RAM:</b> ${Math.round(server.plan?.ramMb ?? 0 / 1024)} GB`,
+          `💽 <b>Disk:</b> ${server.plan?.diskGb} GB`,
+          `🌐 <b>OS:</b> ${server.operatingSystem?.name}`,
+          ``,
+          `<b>🌍 Datacenter</b>`,
+          `📍 <b>Region:</b> ${server.datacenter?.name}`,
+          ``,
+          `<b>🔐 اطلاعات دسترسی</b>`,
+          server.ipv4Address ? `IPv4: <code>${server.ipv4Address}</code>` : `IPv4: <code>&lt;Pending&gt;</code>`,
+          server.ipv6Address ? `IPv6: <code>${server.ipv6Address}</code>` : `IPv6: <code>&lt;Pending&gt;</code>`,
+          `Username: <code>root</code>`,
+          ``,
+          `<b>💰 Billing</b>`,
+          `💵 <b>Price:</b> ${formatCurrency(Number(server.hourlyPrice))} / hour`,
+          `📊 <b>Renewal:</b> Hourly`,
+        ].join("\n");
+
+        await ctx.editMessageText(message, {
+          reply_markup: buildServerDetailsKeyboard(serverId),
+          parse_mode: "HTML",
+        });
+      } catch (error) {
+        logger.error({ error }, "Failed to load server details");
+        await ctx.answerCallbackQuery({ text: "Failed to load server details.", show_alert: true });
+      }
+    });
+
+    bot.callbackQuery(/^server_action:(.+):(start|stop|reboot_soft|reboot_hard|delete)$/, async (ctx: any) => {
+      try {
+        const [, serverId, action] = parseCallbackData(ctx.callbackQuery.data!);
+        const user = await ensureAppUser(ctx);
+        
+        const server = await serverService.getServerDetails(serverId);
+        if (!server || server.userId !== user.id) {
+          await ctx.answerCallbackQuery({ text: "Unauthorized.", show_alert: true });
+          return;
+        }
+
+        const actionMessages: Record<string, string> = {
+          start: "⏳ Starting server...",
+          stop: "⏳ Stopping server...",
+          reboot_soft: "⏳ Performing soft reboot...",
+          reboot_hard: "⏳ Performing hard reboot...",
+          delete: "⏳ Deleting server...",
+        };
+
+        await ctx.editMessageText(actionMessages[action] ?? "⏳ Processing...", {
+          reply_markup: new InlineKeyboard(),
+          parse_mode: "HTML",
+        });
+
+        try {
+          if (action === "start") {
+            await serverService.startServer(serverId);
+            await ctx.editMessageText("✅ <b>Server started successfully!</b>\n\nIt may take a few moments to become fully operational.", {
+              reply_markup: new InlineKeyboard().text("🔄 Refresh", `server_view:${serverId}`).row().text("🔙 Back", "my_servers"),
+              parse_mode: "HTML",
+            });
+          } else if (action === "stop") {
+            await serverService.stopServer(serverId);
+            await ctx.editMessageText("✅ <b>Server stopped successfully!</b>", {
+              reply_markup: new InlineKeyboard().text("🔄 Refresh", `server_view:${serverId}`).row().text("🔙 Back", "my_servers"),
+              parse_mode: "HTML",
+            });
+          } else if (action === "reboot_soft") {
+            await serverService.rebootServer(serverId, 'SOFT');
+            await ctx.editMessageText("✅ <b>Soft reboot initiated!</b>\n\nThe server will restart gracefully.", {
+              reply_markup: new InlineKeyboard().text("🔄 Refresh", `server_view:${serverId}`).row().text("🔙 Back", "my_servers"),
+              parse_mode: "HTML",
+            });
+          } else if (action === "reboot_hard") {
+            await serverService.rebootServer(serverId, 'HARD');
+            await ctx.editMessageText("✅ <b>Hard reboot initiated!</b>\n\nThe server will restart immediately.", {
+              reply_markup: new InlineKeyboard().text("🔄 Refresh", `server_view:${serverId}`).row().text("🔙 Back", "my_servers"),
+              parse_mode: "HTML",
+            });
+          } else if (action === "delete") {
+            await serverService.deleteServer(serverId);
+            await ctx.editMessageText("✅ <b>Server deleted successfully!</b>\n\nThe server has been removed from your account.", {
+              reply_markup: new InlineKeyboard().text("📦 My Servers", "my_servers").row().text("🔙 Main menu", "main_menu"),
+              parse_mode: "HTML",
+            });
+          }
+          logger.info({ serverId, userId: user.id, action }, "Server action completed");
+        } catch (actionError: any) {
+          logger.error({ actionError, serverId, action }, "Server action failed");
+          await ctx.editMessageText(
+            `❌ <b>Action failed!</b>\n\n${actionError?.message ?? "An error occurred while performing the action."}`,
+            {
+              reply_markup: new InlineKeyboard().text("🔄 Refresh", `server_view:${serverId}`).row().text("🔙 Back", "my_servers"),
+              parse_mode: "HTML",
+            }
+          );
+        }
+      } catch (error) {
+        logger.error({ error }, "Server action handler error");
+        await ctx.answerCallbackQuery({ text: "An error occurred.", show_alert: true });
       }
     });
 
