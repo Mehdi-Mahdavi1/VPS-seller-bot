@@ -77,11 +77,11 @@ export const buildServerDetailsKeyboard = (serverId: string): InlineKeyboard =>
     .row()
     .text("🔙 Back to Servers", "my_servers");
 
-export const buildRebuildOsKeyboard = (serverId: string, images: ImageDto[]): InlineKeyboard => {
+export const buildRebuildOsKeyboard = (token: string, images: ImageDto[]): InlineKeyboard => {
   const keyboard = new InlineKeyboard();
   images.forEach((image) => {
-    keyboard.text(image.name, `rebuild_confirm:${serverId}:${image.id}`).row();
+    keyboard.text(image.name, `rebuild_os_select:${token}:${image.id}`).row();
   });
-  keyboard.text("🔙 Back to Server", `server_view:${serverId}`);
+  keyboard.text("🔙 Cancel", `rebuild_cancel:${token}`);
   return keyboard;
 };
