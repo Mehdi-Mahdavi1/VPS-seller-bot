@@ -203,9 +203,64 @@ export class BotApp {
         const accessMessage = accessMessageLines.join("\n");
 
         // Send complete info as NEW message (not edited) - WITHOUT buttons
-        await ctx.api.sendMessage(ctx.from.id, accessMessage, {
+        const sent = await ctx.api.sendMessage(ctx.from.id, accessMessage, {
           parse_mode: "HTML",
         });
+
+        // Capture chat and message id for later edit
+        const chatId = ctx.from.id;
+        const messageId = (sent as any)?.message_id;
+        const slug = selection.slug;
+
+        // Schedule follow-up after 3 minutes to fetch server details and update message with IPs
+        setTimeout(async () => {
+          try {
+            const provider: any = datacenterServiceInstance.resolveProvider(slug);
+            if (typeof provider.getServer !== "function") return;
+            const serverData = await provider.getServer(server.externalServerId);
+            if (!serverData) return;
+
+            const addressesObj = serverData.addresses ?? {};
+            const addrArrays: any[] = Object.values(addressesObj).flat();
+            const ipv4 = addrArrays.find((a: any) => a?.version === 4 || (a?.addr && a.addr.includes('.')))?.addr ?? addrArrays.find((a: any) => a?.address && a.address.includes('.'))?.address ?? serverData?.accessIPv4 ?? serverData?.ipv4Address ?? undefined;
+            const ipv6 = addrArrays.find((a: any) => a?.version === 6 || (a?.addr && a.addr.includes(':')))?.addr ?? addrArrays.find((a: any) => a?.address && a.address.includes(':'))?.address ?? serverData?.accessIPv6 ?? serverData?.ipv6Address ?? undefined;
+
+            if (!ipv4 && !ipv6) return;
+
+            const updatedLines = [
+              "✅ <b>سرور شما آماده شد!</b>",
+              "",
+              `<b>نام سرور:</b> <code>${server.name}</code>`,
+              `<b>وضعیت:</b> ${server.status}`,
+            ];
+
+            if (ipv4) updatedLines.push(`<b>آدرس IPv4:</b> <code>${ipv4}</code>`);
+            if (ipv6) updatedLines.push(`<b>آدرس IPv6:</b> <code>${ipv6}</code>`);
+
+            updatedLines.push(
+              `<b>نام کاربری:</b> <code>${access.username}</code>`,
+              `<b>رمز عبور:</b> <code>${password}</code>`,
+            );
+
+            const sshCommand = ipv4 ? `ssh -i dvrssh1.pem root@${ipv4}` : access.sshCommand ?? `ssh -i dvrssh1.pem root@<server-ip>`;
+            const escapedSshCommand = sshCommand.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            updatedLines.push(`<b>دستور SSH:</b> <code>${escapedSshCommand}</code>`);
+
+            updatedLines.push(
+              "",
+              "ℹ️ برای اتصال SSH، فایل <code>dvrssh1.pem</code> را از پروژه استفاده کنید.",
+              "",
+              "✅ شما می‌توانید اتصال SSH را شروع کنید."
+            );
+
+            const updatedMessage = updatedLines.join("\n");
+            if (chatId && messageId) {
+              await ctx.api.editMessageText(chatId, messageId, updatedMessage, { parse_mode: "HTML" });
+            }
+          } catch (err) {
+            logger.error({ err, serverId: server.id }, "Follow-up IP fetch failed");
+          }
+        }, 3 * 60 * 1000);
 
         // Clean up token
         deleteSelectionState(token);

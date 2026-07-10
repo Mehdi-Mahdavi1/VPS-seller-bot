@@ -108,6 +108,16 @@ export class InfomaniakProvider implements DatacenterProvider {
     }
   }
 
+  public async getServer(externalServerId: string): Promise<any | null> {
+    try {
+      const response = await this.client.get(`${SERVER_ENDPOINT}/${externalServerId}`);
+      return response.data?.server ?? response.data ?? null;
+    } catch (error) {
+      logger.error({ error, externalServerId }, "Infomaniak getServer failed");
+      return null;
+    }
+  }
+
   public async stopServer(externalServerId: string): Promise<void> {
     logger.info({ externalServerId }, "Placeholder stopServer called for Infomaniak");
     // Implementation note: add server stop or delete actions when API details are available.
