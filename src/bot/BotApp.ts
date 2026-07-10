@@ -27,9 +27,8 @@ import {
   updateSelectionState, 
   deleteSelectionState,
   createRebuildState,
-  getRebuildState,
-  updateRebuildState,
-  deleteRebuildState,
+  getRebuildImageData,
+  deleteRebuildImageToken,
 } from "./callbackStore";
 import { setPendingPrice, getPendingPrice, clearPendingPrice } from "./adminPriceStore";
 import { prisma } from "../infrastructure/database/prismaClient";
@@ -620,9 +619,9 @@ export class BotApp {
           return;
         }
 
-        const token = createRebuildState(serverId);
+        const imageTokens = createRebuildState(serverId, images);
         await ctx.editMessageText("💿 <b>Select Operating System for Rebuild</b>\n\n⚠️ <i>This will erase all data on the server and install the selected OS.</i>", {
-          reply_markup: buildRebuildOsKeyboard(token, images),
+          reply_markup: buildRebuildOsKeyboard(imageTokens, images),
           parse_mode: "HTML",
         });
       } catch (error) {
@@ -631,22 +630,22 @@ export class BotApp {
       }
     });
 
-    bot.callbackQuery(/^rebuild_os_select:(.+):(.+)$/, async (ctx: any) => {
+    bot.callbackQuery(/^rebuild_os_select:(.+)$/, async (ctx: any) => {
       try {
-        const [, token, imageId] = parseCallbackData(ctx.callbackQuery.data!);
-        const rebuildState = getRebuildState(token);
+        const [, imageToken] = parseCallbackData(ctx.callbackQuery.data!);
+        const rebuildData = getRebuildImageData(imageToken);
         
-        if (!rebuildState) {
+        if (!rebuildData) {
           await ctx.answerCallbackQuery({ text: "Selection expired. Please try again.", show_alert: true });
           return;
         }
 
-        const serverId = rebuildState.serverId;
+        const { serverId, imageId } = rebuildData;
         const user = await ensureAppUser(ctx);
         
         const server = await serverService.getServerDetails(serverId);
         if (!server || server.userId !== user.id) {
-          deleteRebuildState(token);
+          deleteRebuildImageToken(imageToken);
           await ctx.answerCallbackQuery({ text: "Unauthorized.", show_alert: true });
           return;
         }
@@ -679,7 +678,7 @@ export class BotApp {
             }
           );
         } finally {
-          deleteRebuildState(token);
+          deleteRebuildImageToken(imageToken);
         }
       } catch (error) {
         logger.error({ error }, "Rebuild confirmation handler error");
@@ -687,21 +686,11 @@ export class BotApp {
       }
     });
 
-    bot.callbackQuery(/^rebuild_cancel:(.+)$/, async (ctx: any) => {
+    bot.callbackQuery(/^rebuild_cancel$/, async (ctx: any) => {
       try {
-        const [, token] = parseCallbackData(ctx.callbackQuery.data!);
-        const rebuildState = getRebuildState(token);
-        
-        if (rebuildState) {
-          const serverId = rebuildState.serverId;
-          const server = await serverService.getServerDetails(serverId);
-          if (server) {
-            await ctx.editMessageText("Rebuild cancelled.", {
-              reply_markup: new InlineKeyboard().text("🔙 Back to Server", `server_view:${serverId}`),
-            });
-          }
-          deleteRebuildState(token);
-        }
+        await ctx.editMessageText("Rebuild cancelled.", {
+          reply_markup: new InlineKeyboard().text("🔙 Back to My Servers", "my_servers"),
+        });
       } catch (error) {
         logger.error({ error }, "Rebuild cancel handler error");
         await ctx.answerCallbackQuery({ text: "An error occurred.", show_alert: true });
