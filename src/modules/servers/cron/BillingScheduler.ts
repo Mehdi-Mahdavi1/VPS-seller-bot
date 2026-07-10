@@ -29,15 +29,17 @@ export class BillingScheduler {
   constructor(private readonly serverRepository: ServerRepository, private readonly walletService: WalletService) {}
 
   public start() {
-    cron.schedule("0 * * * *", async () => {
-      logger.info("Starting hourly billing job");
+    // Run every minute to pick up servers as soon as their expiry passes
+    cron.schedule("* * * * *", async () => {
+      logger.info("Starting billing job (every minute)");
       await this.runBillingCycle();
     });
-    logger.info("Billing scheduler registered for hourly execution");
+    logger.info("Billing scheduler registered for minute-level execution");
   }
 
   private async runBillingCycle() {
-    const servers = await this.serverRepository.findActiveServers();
+    const now = new Date();
+    const servers = await this.serverRepository.findExpiringServers(now);
     for (const server of servers) {
       try {
         const hourlyCost = toNumber(server.hourlyPrice);
@@ -74,9 +76,11 @@ export class BillingScheduler {
 
           // Notify user
           if (chatId) {
-            const msg = `🗑️ <b>سرور ${server.name} حذف شد</b>\n\nبه دلیل کمبود موجودی، سرور شما حذف شد.`;
+            const serverTitle = `${server.name}`;
+            const code = server.externalServerId;
+            const msg = `🗑️ <b>${serverTitle}</b> (<code>${code}</code>)\n\nبه دلیل کمبود موجودی، سرور شما حذف شد.`;
             try {
-              await bot.api.sendMessage(chatId, msg, { parse_mode: "HTML" });
+              await bot.api.sendMessage(chatId, msg, { parse_mode: "HTML" as any });
             } catch (err) {
               logger.warn({ error: err, chatId, serverId: server.id }, "Failed to notify user about server deletion");
             }
@@ -105,13 +109,15 @@ export class BillingScheduler {
         const newExpiry = new Date(Math.max(Date.now(), currentExpiry.getTime()) + 60 * 60 * 1000);
         await prisma.server.update({ where: { id: server.id }, data: { expiresAt: newExpiry } });
 
-        // Notify user about renewal
+        // Notify user about renewal (HTML formatting)
         if (chatId) {
           const local = formatLocal(Number(hourlyCost));
           const usdText = formatCurrency(Number(hourlyCost));
           const localText = local ? ` (${local})` : "";
           const expiresStr = newExpiry.toLocaleString();
-          const msg = `**${server.name}** (\`${server.externalServerId}\`)\n\n✅ <b>سرور شما با موفقیت تمدید شد.</b>\n\n• ️دوره پرداخت: ساعتی\n• ️تاریخ اتمام دوره: \`${expiresStr}\` (1 ساعت و 0 دقیقه)\n• ️هزینه کسر شده: ${usdText}${localText}`;
+          const serverTitle = `${server.name}`;
+          const code = server.externalServerId;
+          const msg = `<b>${serverTitle}</b> (<code>${code}</code>)\n\n✅ <b>سرور شما با موفقیت تمدید شد.</b>\n\n• ️دوره پرداخت: ساعتی\n• ️تاریخ اتمام دوره: \`${expiresStr}\` (1 ساعت و 0 دقیقه)\n• ️هزینه کسر شده: ${usdText}${localText}`;
           try {
             await bot.api.sendMessage(chatId, msg, { parse_mode: "HTML" as any });
           } catch (err) {

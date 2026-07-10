@@ -34,6 +34,21 @@ export class ServerRepository {
     });
   }
 
+  public async findExpiringServers(cutoff: Date): Promise<Array<ServerModel & { wallet: Wallet | null; plan: ServerPlan | null; user: User | null; datacenter: Datacenter | null }>> {
+    return prisma.server.findMany({
+      where: {
+        status: "ACTIVE",
+        expiresAt: { lte: cutoff },
+      },
+      include: {
+        wallet: true,
+        plan: true,
+        user: true,
+        datacenter: true,
+      },
+    });
+  }
+
   public async findUserServers(userId: string): Promise<Array<ServerModel & { plan: ServerPlan | null; datacenter: Datacenter | null; operatingSystem: OperatingSystem | null }>> {
     return prisma.server.findMany({
       where: { userId },
