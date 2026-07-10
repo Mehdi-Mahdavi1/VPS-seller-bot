@@ -37,4 +37,25 @@ export class ServerRepository {
   public async updateStatus(serverId: string, status: ServerStatus): Promise<ServerModel> {
     return prisma.server.update({ where: { id: serverId }, data: { status } });
   }
+
+  public async updateTelegramNotificationInfo(
+    serverId: string,
+    telegramChatId: string,
+    telegramMessageId: number
+  ): Promise<ServerModel> {
+    return prisma.server.update({
+      where: { id: serverId },
+      data: {
+        telegramChatId,
+        telegramMessageId,
+      },
+    });
+  }
+
+  public async findServerById(serverId: string): Promise<ServerModel | null> {
+    return prisma.server.findUnique({
+      where: { id: serverId },
+    });
+  }
 }
+

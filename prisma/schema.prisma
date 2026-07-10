@@ -135,6 +135,8 @@ model Server {
   ipv6Address      String?
   hourlyPrice      Decimal
   billingRecords   ServerBilling[]
+  telegramMessageId Int?           @db.Integer
+  telegramChatId   String?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   deletedAt        DateTime?

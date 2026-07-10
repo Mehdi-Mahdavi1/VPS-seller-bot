@@ -130,4 +130,14 @@ export class ServerService {
       return null;
     }
   }
+
+  public async storeServerTelegramInfo(serverId: string, chatId: string, messageId: number): Promise<void> {
+    await prisma.server.update({
+      where: { id: serverId },
+      data: {
+        telegramChatId: chatId,
+        telegramMessageId: messageId,
+      },
+    });
+  }
 }

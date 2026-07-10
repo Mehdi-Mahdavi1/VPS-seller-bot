@@ -1,13 +1,16 @@
 import { bot } from "./infrastructure/telegram/bot";
 import { BotApp } from "./bot/BotApp";
 import { BillingScheduler } from "./modules/servers/cron/BillingScheduler";
+import { ServerIPPollerScheduler } from "./modules/servers/cron/ServerIPPollerScheduler";
 import { ServerRepository } from "./modules/servers/repositories/ServerRepository";
 import { WalletRepository } from "./modules/wallet/repositories/WalletRepository";
 import { WalletService } from "./modules/wallet/services/WalletService";
 import { logger } from "./infrastructure/logger/logger";
 
 const app = new BotApp();
-const scheduler = new BillingScheduler(new ServerRepository(), new WalletService(new WalletRepository()));
+const serverRepository = new ServerRepository();
+const billingScheduler = new BillingScheduler(serverRepository, new WalletService(new WalletRepository()));
+const ipPollerScheduler = new ServerIPPollerScheduler(serverRepository);
 
 (async () => {
   try {
@@ -21,8 +24,9 @@ const scheduler = new BillingScheduler(new ServerRepository(), new WalletService
       logger.warn({ error: commandError }, "Unable to register bot commands, continuing startup");
     }
 
-    scheduler.start();
-    logger.info("Bot process started");
+    billingScheduler.start();
+    ipPollerScheduler.start();
+    logger.info("Bot process started with scheduling jobs");
   } catch (error) {
     logger.error({ error }, "Application failed to start");
     process.exit(1);
