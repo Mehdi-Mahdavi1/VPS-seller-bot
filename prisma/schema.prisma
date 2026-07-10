@@ -134,6 +134,7 @@ model Server {
   ipv4Address      String?
   ipv6Address      String?
   hourlyPrice      Decimal
+  expiresAt        DateTime?
   billingRecords   ServerBilling[]
   telegramMessageId Int?           @db.Integer
   telegramChatId   String?

@@ -85,6 +85,9 @@ export class ServerService {
     // Deduct payment from wallet
     await this.walletService.charge(userId, chargeAmount, `Server purchase ${name} (${billingMode})`);
 
+    // compute initial expiry based on billing mode
+    const initialExpiry = billingMode === "MONTHLY" ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : new Date(Date.now() + 60 * 60 * 1000);
+
     const server = await prisma.server.create({
       data: {
         userId,
@@ -100,6 +103,7 @@ export class ServerService {
         ipv4Address: accessData.ipv4Address,
         ipv6Address: accessData.ipv6Address,
         hourlyPrice: hourlyPrice,
+        expiresAt: initialExpiry,
       },
     });
 

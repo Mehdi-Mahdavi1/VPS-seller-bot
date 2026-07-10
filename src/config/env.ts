@@ -25,4 +25,6 @@ export const env = {
     : [],
   ADMIN_IDS: process.env.ADMIN_IDS ? process.env.ADMIN_IDS.split(",").map((value) => value.trim()) : [],
   NODE_ENV: process.env.NODE_ENV || "development",
+  // Optional exchange rate (USD -> Toman). If set, messages will include local currency conversion.
+  USD_TO_TOMAN: process.env.USD_TO_TOMAN ? Number(process.env.USD_TO_TOMAN) : undefined,
 };
