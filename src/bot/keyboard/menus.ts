@@ -72,6 +72,16 @@ export const buildServerDetailsKeyboard = (serverId: string): InlineKeyboard =>
     .text("🔄 Soft Reboot", `server_action:${serverId}:reboot_soft`)
     .text("⚡ Hard Reboot", `server_action:${serverId}:reboot_hard`)
     .row()
+    .text("🔨 Rebuild", `server_rebuild:${serverId}`)
     .text("🗑️ Delete", `server_action:${serverId}:delete`)
     .row()
     .text("🔙 Back to Servers", "my_servers");
+
+export const buildRebuildOsKeyboard = (serverId: string, images: ImageDto[]): InlineKeyboard => {
+  const keyboard = new InlineKeyboard();
+  images.forEach((image) => {
+    keyboard.text(image.name, `rebuild_confirm:${serverId}:${image.id}`).row();
+  });
+  keyboard.text("🔙 Back to Server", `server_view:${serverId}`);
+  return keyboard;
+};

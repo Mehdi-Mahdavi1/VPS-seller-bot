@@ -17,6 +17,7 @@ import {
   buildAdminPaymentKeyboard,
   buildServersListKeyboard,
   buildServerDetailsKeyboard,
+  buildRebuildOsKeyboard,
 } from "./keyboard/menus";
 import { formatCurrency } from "../modules/common/formatter";
 import { env } from "../config/env";
@@ -589,6 +590,78 @@ export class BotApp {
         }
       } catch (error) {
         logger.error({ error }, "Server action handler error");
+        await ctx.answerCallbackQuery({ text: "An error occurred.", show_alert: true });
+      }
+    });
+
+    bot.callbackQuery(/^server_rebuild:(.*)$/, async (ctx: any) => {
+      try {
+        const [, serverId] = parseCallbackData(ctx.callbackQuery.data!);
+        const user = await ensureAppUser(ctx);
+        
+        const server = await serverService.getServerDetails(serverId);
+        if (!server || server.userId !== user.id) {
+          await ctx.answerCallbackQuery({ text: "Unauthorized.", show_alert: true });
+          return;
+        }
+
+        const images = await datacenterServiceInstance.listOperatingSystems(server.datacenter?.slug ?? "infomaniak");
+        if (images.length === 0) {
+          await ctx.answerCallbackQuery({ text: "No operating systems available.", show_alert: true });
+          return;
+        }
+
+        await ctx.editMessageText("💿 <b>Select Operating System for Rebuild</b>\n\n⚠️ <i>This will erase all data on the server and install the selected OS.</i>", {
+          reply_markup: buildRebuildOsKeyboard(serverId, images),
+          parse_mode: "HTML",
+        });
+      } catch (error) {
+        logger.error({ error }, "Rebuild OS selection failed");
+        await ctx.answerCallbackQuery({ text: "Failed to load operating systems.", show_alert: true });
+      }
+    });
+
+    bot.callbackQuery(/^rebuild_confirm:(.+):(.+)$/, async (ctx: any) => {
+      try {
+        const [, serverId, imageId] = parseCallbackData(ctx.callbackQuery.data!);
+        const user = await ensureAppUser(ctx);
+        
+        const server = await serverService.getServerDetails(serverId);
+        if (!server || server.userId !== user.id) {
+          await ctx.answerCallbackQuery({ text: "Unauthorized.", show_alert: true });
+          return;
+        }
+
+        const image = await datacenterServiceInstance.getOperatingSystemById(imageId);
+        if (!image) {
+          await ctx.answerCallbackQuery({ text: "Operating system not found.", show_alert: true });
+          return;
+        }
+
+        await ctx.editMessageText(`⏳ <b>Rebuilding server with ${image.name}...</b>\n\nThis process may take a few minutes.`, {
+          reply_markup: new InlineKeyboard(),
+          parse_mode: "HTML",
+        });
+
+        try {
+          await serverService.rebuildServer(serverId, imageId);
+          await ctx.editMessageText(`✅ <b>Server rebuild initiated successfully!</b>\n\n🖥️ <b>New OS:</b> ${image.name}\n\n⏱️ The server will be unavailable during the rebuild process. Please wait a few minutes before accessing it.`, {
+            reply_markup: new InlineKeyboard().text("🔄 Refresh", `server_view:${serverId}`).row().text("🔙 Back", "my_servers"),
+            parse_mode: "HTML",
+          });
+          logger.info({ serverId, userId: user.id, imageId }, "Server rebuild initiated");
+        } catch (rebuildError: any) {
+          logger.error({ rebuildError, serverId, imageId }, "Server rebuild failed");
+          await ctx.editMessageText(
+            `❌ <b>Rebuild failed!</b>\n\n${rebuildError?.message ?? "An error occurred during rebuild."}`,
+            {
+              reply_markup: new InlineKeyboard().text("🔄 Refresh", `server_view:${serverId}`).row().text("🔙 Back", "my_servers"),
+              parse_mode: "HTML",
+            }
+          );
+        }
+      } catch (error) {
+        logger.error({ error }, "Rebuild confirmation handler error");
         await ctx.answerCallbackQuery({ text: "An error occurred.", show_alert: true });
       }
     });

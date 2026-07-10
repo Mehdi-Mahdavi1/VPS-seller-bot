@@ -166,4 +166,18 @@ export class InfomaniakProvider implements DatacenterProvider {
       throw error;
     }
   }
+
+  public async rebuildServer(externalServerId: string, imageRef: string): Promise<void> {
+    try {
+      await this.client.post(`${SERVER_ENDPOINT}/${externalServerId}/action`, {
+        rebuild: {
+          imageRef,
+        },
+      });
+      logger.info({ externalServerId, imageRef }, "Server rebuild initiated successfully");
+    } catch (error) {
+      logger.error({ error, externalServerId, imageRef }, "Infomaniak rebuildServer failed");
+      throw error;
+    }
+  }
 }

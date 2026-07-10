@@ -199,4 +199,16 @@ export class ServerService {
     await provider.deleteServer(server.externalServerId);
     await this.serverRepository.updateStatus(serverId, 'DELETED');
   }
+
+  public async rebuildServer(serverId: string, imageRef: string): Promise<void> {
+    const server = await this.serverRepository.findServerById(serverId);
+    if (!server) throw new Error("Server not found");
+    
+    const provider = this.datacenterService.resolveProvider(server.datacenterId);
+    if (!provider || typeof provider.rebuildServer !== 'function') {
+      throw new Error("Provider does not support rebuildServer");
+    }
+    
+    await provider.rebuildServer(server.externalServerId, imageRef);
+  }
 }

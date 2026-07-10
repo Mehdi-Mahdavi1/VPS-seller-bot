@@ -10,4 +10,5 @@ export interface DatacenterProvider {
   startServer?(externalServerId: string): Promise<void>;
   rebootServer?(externalServerId: string, type: 'SOFT' | 'HARD'): Promise<void>;
   deleteServer?(externalServerId: string): Promise<void>;
+  rebuildServer?(externalServerId: string, imageRef: string): Promise<void>;
 }
