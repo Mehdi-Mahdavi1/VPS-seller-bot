@@ -284,7 +284,7 @@ export class BotApp {
       try {
         const user = await ensureAppUser(ctx);
         const summary = await walletService.getWalletSummary(user.id);
-        const text = [ `موجودی کیف پول : ${formatCurrency(summary.balance)}`].join("\n");
+        const text = [ `موجودی کیف پول \n برای افزایش موجودی گزینه کارت به کار را انتخاب کنید : \n ${formatCurrency(summary.balance)}`].join("\n");
         await ctx.editMessageText(text, { reply_markup: buildPaymentMethodKeyboard() });
       } catch (error) {
         await ctx.answerCallbackQuery({ text: "Unable to resolve user.", show_alert: true });
@@ -336,7 +336,7 @@ export class BotApp {
         return;
       }
       // Admin panel: show options for payments and plan pricing
-      const keyboard = new InlineKeyboard().text("📝 Pending payments", "admin_pending_payments").row().text("💲 Manage plans/prices", "admin_manage_plans");
+      const keyboard = new InlineKeyboard().text("📝 تایید واریزی ها", "admin_pending_payments").row().text("💲 قیمت گذاری ", "admin_manage_plans");
       await ctx.editMessageText("🛠 Admin panel", { reply_markup: keyboard });
     });
 
