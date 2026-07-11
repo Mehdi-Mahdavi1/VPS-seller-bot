@@ -135,7 +135,7 @@ export class BotApp {
       }
       const images = await datacenterServiceInstance.listOperatingSystems(selection.slug);
       const keyboard = buildOsMenuKeyboard(token, images, `plan_select:${selection.slug}:${selection.flavorId}`);
-      await ctx.editMessageText("💿 Select Server Operating System\n❕Changing OS after server creation is not supported.", { reply_markup: keyboard });
+      await ctx.editMessageText("💿 سیستم عامل مورد نظر را انتخاب کنید  : ", { reply_markup: keyboard });
     });
 
     bot.callbackQuery(/^os_select:(.*):(.*)$/, async (ctx: any) => {
@@ -284,7 +284,7 @@ export class BotApp {
       try {
         const user = await ensureAppUser(ctx);
         const summary = await walletService.getWalletSummary(user.id);
-        const text = [`💰 Wallet`, `Current Balance: ${formatCurrency(summary.balance)}`, `Total Deposits: ${formatCurrency(summary.totalDeposits)}`, `Total Usage: ${formatCurrency(summary.totalUsage)}`].join("\n");
+        const text = [ `موجودی کیف پول : ${formatCurrency(summary.balance)}`].join("\n");
         await ctx.editMessageText(text, { reply_markup: buildPaymentMethodKeyboard() });
       } catch (error) {
         await ctx.answerCallbackQuery({ text: "Unable to resolve user.", show_alert: true });
@@ -292,13 +292,13 @@ export class BotApp {
     });
 
     bot.callbackQuery("wallet_increase", async (ctx: any) => {
-      await ctx.editMessageText("💳 Select top-up amount", { reply_markup: buildPaymentAmountKeyboard() });
+      await ctx.editMessageText("💳  مورد نظر برای شارژ کیف پول را نتخاب کنید مبلغ: \n حداقل مبلغ شارژ 0.5 دلار میباشد ", { reply_markup: buildPaymentAmountKeyboard() });
     });
 
     bot.callbackQuery(/^payment_amount:(.*)$/, async (ctx: any) => {
       const [, amountValue] = parseCallbackData(ctx.callbackQuery.data!);
       const amount = Number(amountValue);
-      if (isNaN(amount) || amount < 1000000) {
+      if (isNaN(amount) || amount < 0.5) {
         await ctx.answerCallbackQuery({ text: "مقدار انتخاب شده نامعتبر است.", show_alert: true });
         return;
       }

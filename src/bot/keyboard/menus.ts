@@ -40,15 +40,15 @@ export const buildPaymentMethodKeyboard = (): InlineKeyboard =>
 
 export const buildPaymentAmountKeyboard = (): InlineKeyboard =>
   new InlineKeyboard()
-    .text("1,000,000 Rial", "payment_amount:1000000")
+    .text("0.5 $", "payment_amount:0.5")
     .row()
-    .text("2,000,000 Rial", "payment_amount:2000000")
+    .text("1 $", "payment_amount:1")
     .row()
-    .text("5,000,000 Rial", "payment_amount:5000000")
+    .text("5 $", "payment_amount:5")
     .row()
-    .text("10,000,000 Rial", "payment_amount:10000000")
+    .text("10 $", "payment_amount:10")
     .row()
-    .text("15,000,000 Rial", "payment_amount:15000000")
+    .text("15 $", "payment_amount:15")
     .row()
     .text("⬅️ بازگشت", "wallet_menu");
 
