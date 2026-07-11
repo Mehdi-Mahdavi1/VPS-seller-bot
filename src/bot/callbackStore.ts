@@ -1,10 +1,12 @@
 import { randomBytes } from "crypto";
 
+export type BillingMode = "HOURLY" | "MONTHLY";
+
 type SelectionState = {
   slug: string;
   flavorId: string;
   imageId?: string;
-  billingMode?: "HOURLY" | "MONTHLY";
+  billingMode?: BillingMode;
 };
 
 type RebuildState = {

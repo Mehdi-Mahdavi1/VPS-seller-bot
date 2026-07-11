@@ -22,6 +22,7 @@ import {
 import { formatCurrency } from "../modules/common/formatter";
 import { env } from "../config/env";
 import { 
+  BillingMode,
   createSelectionState, 
   getSelectionState, 
   updateSelectionState, 
@@ -45,19 +46,28 @@ async function ensureAppUser(ctx: any) {
   return userService.ensureUser(telegramId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
 }
 
-function buildServerDetailsMessage(plan: any, osName: string | null, billingMode: "HOURLY" | "MONTHLY" = "HOURLY"): string {
+type BillingLabel = "ساعتی" | "ماهانه";
+
+function getDisplayBillingMode(mode?: BillingMode): BillingLabel {
+  return mode === "MONTHLY" ? "ماهانه" : "ساعتی";
+}
+
+function buildServerDetailsMessage(plan: any, osName: string | null, billingMode: BillingLabel | BillingMode = "ساعتی"): string {
+  const displayMode: BillingLabel = billingMode === "MONTHLY" || billingMode === "HOURLY"
+    ? getDisplayBillingMode(billingMode as BillingMode)
+    : billingMode;
   const monthly = Number(plan.monthlyPrice ?? 0);
   const hourly = monthly / 720;
-  const priceLine = billingMode === "MONTHLY" ? `${formatCurrency(monthly)} / month` : `${formatCurrency(hourly)} / hour`;
+  const priceLine = displayMode === "ماهانه" ? `${formatCurrency(monthly)} / ماهانه` : `${formatCurrency(hourly)} / ساعتی`;
   return [
-    `🖥 <b>Plan details</b>`,
-    `Name: ${plan.name}`,
-    `CPU: ${plan.vcpus} Core(s)`,
-    `RAM: ${plan.ramMb / 1024} GB`,
-    `Disk: ${plan.diskGb} GB`,
-    `Traffic: 1 TB`,
-    `Price: ${priceLine}`,
-    `Selected OS: ${osName ?? "Not Selected"}`,
+    `🖥 <b>جزئیات پلن</b>`,
+    `نام سرور: ${plan.name}`,
+    `پردازنده: ${plan.vcpus} Core(s)`,
+    `رم: ${plan.ramMb / 1024} GB`,
+    `دیسک: ${plan.diskGb} GB`,
+    `ترافیک: 1 TB`,
+    `قیمت: ${priceLine}`,
+    `سیستم عامل: ${osName ?? "انتخاب نشده"}`,
   ].join("\n");
 }
 
@@ -75,13 +85,13 @@ export class BotApp {
     bot.command("start", async (ctx: any) => {
       logger.info("START COMMAND RECEIVED", { telegramId: ctx.from?.id?.toString() });
       const user = await userService.ensureUser(ctx.from?.id.toString(), ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
-      const text = [`👋 Hello ${user.firstName ?? "there"}!`, "Use the menu below to manage your servers and wallet."].join("\n");
+      const text = ["به ربات خرید سرور مجازی سیموریکس خوش آمدید 👋", "برای ادامه یکی از گزینه های زیر را انتخاب کنید "].join("\n");
       await ctx.reply(text, { reply_markup: buildMainMenuKeyboard() });
     });
 
     bot.callbackQuery("create_server", async (ctx: any) => {
       const datacenters = await datacenterServiceInstance.getDatacenterSummaries();
-      await ctx.editMessageText("🖥 Available Datacenters\nChoose the datacenter you want to deploy your virtual server.\nCurrently available:\n✅ Infomaniak", {
+      await ctx.editMessageText("🖥 لیست دیتاسنرتر ها\nدیتاسنتر مورد نظر خود را انتخاب کنید ", {
         reply_markup: buildDatacenterKeyboard(datacenters),
       });
     });
@@ -90,29 +100,29 @@ export class BotApp {
       const [, slug] = parseCallbackData(ctx.callbackQuery.data!);
       const plans = await datacenterServiceInstance.listPlans(slug);
       if (plans.length === 0) {
-        await ctx.answerCallbackQuery({ text: "No plans available for the selected datacenter.", show_alert: true });
+        await ctx.answerCallbackQuery({ text: "هیچ پلنی برای دیتاسنتر انتخاب شده در دسترس نیست.", show_alert: true });
         return;
       }
-      await ctx.editMessageText("🖥 Select a server plan", { reply_markup: buildCreateServerKeyboard(slug, plans) });
+      await ctx.editMessageText("لطفا مشخصات سرویس خود را انتخاب کنید \n قیمت های درج شده ماهانه میباشند ", { reply_markup: buildCreateServerKeyboard(slug, plans) });
     });
 
     bot.callbackQuery(/^plan_select:(.*):(.*)$/, async (ctx: any) => {
       const [, slug, flavorId] = parseCallbackData(ctx.callbackQuery.data!);
       const plan = await datacenterServiceInstance.getPlanById(slug, flavorId);
       if (!plan) {
-        await ctx.answerCallbackQuery({ text: "The selected plan is no longer available.", show_alert: true });
+        await ctx.answerCallbackQuery({ text: "پلن انتخاب شده دیگر در دسترس نیست.", show_alert: true });
         return;
       }
       const token = createSelectionState({ slug, flavorId });
-      const message = buildServerDetailsMessage(plan, null, "HOURLY");
+      const message = buildServerDetailsMessage(plan, null, "ساعتی");
       const keyboard = new InlineKeyboard()
-        .text("💿 Select Operating System", `select_os:${token}`)
+        .text("💿 انتخاب سیستم عامل", `select_os:${token}`)
         .row()
-        .text("🔁 Billing: Hourly", `toggle_billing:${token}`)
+        .text("🔁 صورتحساب: ساعتی", `toggle_billing:${token}`)
         .row()
-        .text("✅ Create Server (Charge hourly)", `create_server_confirm:${token}`)
+        .text("✅ ایجاد سرور (شارژ ساعتی)", `create_server_confirm:${token}`)
         .row()
-        .text("🔙 Main menu", "main_menu");
+        .text("🔙 منوی اصلی", "main_menu");
       await ctx.editMessageText(message, { reply_markup: keyboard, parse_mode: "HTML" });
     });
 
@@ -138,20 +148,20 @@ export class BotApp {
       const plan = await datacenterServiceInstance.getPlanById(selection.slug, selection.flavorId);
       const os = await datacenterServiceInstance.getOperatingSystemById(imageId);
       if (!plan || !os) {
-        await ctx.answerCallbackQuery({ text: "Unable to load selected operating system.", show_alert: true });
+        await ctx.answerCallbackQuery({ text: "امکان بارگذاری سیستم عامل انتخاب شده وجود ندارد.", show_alert: true });
         return;
       }
       updateSelectionState(token, { imageId });
       selection = getSelectionState(token)!;
       const message = buildServerDetailsMessage(plan, os.name, selection.billingMode ?? "HOURLY");
       const keyboard = new InlineKeyboard()
-        .text("💿 Select Operating System", `select_os:${token}`)
+        .text("💿 انتخاب سیستم عامل", `select_os:${token}`)
         .row()
-        .text(selection.billingMode === "MONTHLY" ? "✅ Create Server (Charge monthly)" : "✅ Create Server (Charge hourly)", `create_server_confirm:${token}`)
+        .text(selection.billingMode === "MONTHLY" ? "✅ ایجاد سرور (شارژ ماهانه)" : "✅ ایجاد سرور (شارژ ساعتی)", `create_server_confirm:${token}`)
         .row()
-        .text(selection.billingMode === "MONTHLY" ? "💲 Billing: Monthly" : "💲 Billing: Hourly", `toggle_billing:${token}`)
+        .text(selection.billingMode === "MONTHLY" ? "💲 صورتحساب: ماهانه" : "💲 صورتحساب: ساعتی", `toggle_billing:${token}`)
         .row()
-        .text("🔙 Main menu", "main_menu");
+        .text("🔙 منوی اصلی", "main_menu");
       await ctx.editMessageText(message, { reply_markup: keyboard, parse_mode: "HTML" });
     });
 
@@ -159,7 +169,7 @@ export class BotApp {
       const [, token] = parseCallbackData(ctx.callbackQuery.data!);
       const selection = getSelectionState(token);
       if (!selection?.imageId) {
-        await ctx.answerCallbackQuery({ text: "Please select an operating system before creating the server.", show_alert: true });
+        await ctx.answerCallbackQuery({ text: "لطفاً قبل از ایجاد سرور یک سیستم عامل انتخاب کنید.", show_alert: true });
         return;
       }
       try {
@@ -242,7 +252,7 @@ export class BotApp {
               .text("🔙 منوی اصلی", "main_menu"),
           });
         } else {
-          await ctx.editMessageText(`❌ ${error?.message ?? "Server creation failed."}`, { reply_markup: buildMainMenuKeyboard() });
+          await ctx.editMessageText(`❌ ${error?.message ?? "ایجاد سرور با خطا مواجه شد."}`, { reply_markup: buildMainMenuKeyboard() });
         }
       }
     });
@@ -254,19 +264,19 @@ export class BotApp {
         await ctx.answerCallbackQuery({ text: "Selection expired. Please choose a plan again.", show_alert: true });
         return;
       }
-      const newMode = selection.billingMode === "MONTHLY" ? "HOURLY" : "MONTHLY";
+      const newMode: BillingMode = selection.billingMode === "MONTHLY" ? "HOURLY" : "MONTHLY";
       updateSelectionState(token, { billingMode: newMode });
       const plan = await datacenterServiceInstance.getPlanById(selection.slug, selection.flavorId);
       const osName = selection.imageId ? (await datacenterServiceInstance.getOperatingSystemById(selection.imageId))?.name : null;
       const message = buildServerDetailsMessage(plan, osName ?? null, newMode);
       const keyboard = new InlineKeyboard()
-        .text("💿 Select Operating System", `select_os:${token}`)
+        .text("💿 انتخاب سیستم عامل", `select_os:${token}`)
         .row()
-        .text(newMode === "MONTHLY" ? "✅ Create Server (Charge monthly)" : "✅ Create Server (Charge hourly)", `create_server_confirm:${token}`)
+        .text(newMode === "MONTHLY" ? "✅ ایجاد سرور (شارژ ماهانه)" : "✅ ایجاد سرور (شارژ ساعتی)", `create_server_confirm:${token}`)
         .row()
-        .text(newMode === "MONTHLY" ? "💲 Billing: Monthly" : "💲 Billing: Hourly", `toggle_billing:${token}`)
+        .text(newMode === "MONTHLY" ? "💲 صورتحساب: ماهانه" : "💲 صورتحساب: ساعتی", `toggle_billing:${token}`)
         .row()
-        .text("🔙 Main menu", "main_menu");
+        .text("🔙 منوی اصلی", "main_menu");
       await ctx.editMessageText(message, { reply_markup: keyboard, parse_mode: "HTML" });
     });
 
@@ -289,13 +299,13 @@ export class BotApp {
       const [, amountValue] = parseCallbackData(ctx.callbackQuery.data!);
       const amount = Number(amountValue);
       if (isNaN(amount) || amount < 1000000) {
-        await ctx.answerCallbackQuery({ text: "Invalid amount selected.", show_alert: true });
+        await ctx.answerCallbackQuery({ text: "مقدار انتخاب شده نامعتبر است.", show_alert: true });
         return;
       }
       try {
         const user = await ensureAppUser(ctx);
         const payment = await paymentService.createPendingPayment(user.id, amount, "CARD_TO_CARD");
-        const text = [`📄 Payment instructions`, `Card Number: 1234 5678 9012 3456`, `Card Holder Name: Your Company`, `Amount: ${formatCurrency(amount)}`, `Please take a screenshot of the transfer and upload the receipt below.`, `Payment ID: ${payment.id}`].join("\n");
+        const text = [`📄 راهنمای پرداخت`, `شماره کارت: 1234 5678 9012 3456`, `نام صاحب کارت: Your Company`, `مبلغ: ${formatCurrency(amount)}`, `لطفاً از انتقال خود اسکرین‌شات بگیرید و رسید را در زیر ارسال کنید.`, `شناسه پرداخت: ${payment.id}`].join("\n");
         await ctx.editMessageText(text, { reply_markup: new InlineKeyboard().text("⬅️ Back", "wallet_menu") });
       } catch (error) {
         await ctx.answerCallbackQuery({ text: "Unable to resolve user.", show_alert: true });
@@ -308,11 +318,11 @@ export class BotApp {
         const photoFileId = ctx.message.photo[ctx.message.photo.length - 1]?.file_id;
         const payment = await paymentService.attachReceiptForLatestPendingPayment(user.id, photoFileId);
         if (payment) {
-          const caption = `🧾 New wallet recharge receipt\nUser: ${user.telegramId}\nAmount: ${formatCurrency(Number(payment.amount))}\nPayment ID: ${payment.id}`;
+          const caption = `🧾 رسید شارژ کیف پول\nکاربر: ${user.telegramId}\nمبلغ: ${formatCurrency(Number(payment.amount))}\nشناسه پرداخت: ${payment.id}`;
           await Promise.allSettled(
             env.ADMIN_IDS.map((adminId: string) => ctx.api.sendPhoto(adminId, photoFileId, { caption }))
           );
-          await ctx.reply("✅ Receipt received. An admin will review your payment shortly.");
+          await ctx.reply("✅ رسید دریافت شد. یک مدیر به زودی پرداخت شما را بررسی خواهد کرد.");
         }
       } catch (error) {
         // ignore missing user or attachment issues
@@ -322,7 +332,7 @@ export class BotApp {
     bot.callbackQuery("admin_panel", async (ctx: any) => {
       const telegramId = ctx.from?.id.toString();
       if (!telegramId || !adminService.isAdmin(telegramId)) {
-        await ctx.answerCallbackQuery({ text: "You are not authorized to access the admin panel.", show_alert: true });
+        await ctx.answerCallbackQuery({ text: "شما اجازه دسترسی به پنل ادمین را ندارید.", show_alert: true });
         return;
       }
       // Admin panel: show options for payments and plan pricing
@@ -333,16 +343,16 @@ export class BotApp {
     bot.callbackQuery("admin_pending_payments", async (ctx: any) => {
       const telegramId = ctx.from?.id.toString();
       if (!telegramId || !adminService.isAdmin(telegramId)) {
-        await ctx.answerCallbackQuery({ text: "Unauthorized.", show_alert: true });
+        await ctx.answerCallbackQuery({ text: "دسترسی شما مجاز نیست.", show_alert: true });
         return;
       }
       const pendingPayments = await adminService.getPendingPayments();
       if (pendingPayments.length === 0) {
-        await ctx.editMessageText("✅ No pending payments at the moment.");
+        await ctx.editMessageText("✅ در حال حاضر هیچ پرداخت در انتظار تأیید وجود ندارد.");
         return;
       }
       const payment = pendingPayments[0];
-      const caption = `📝 Pending payment\nUser: ${payment.user.telegramId}\nAmount: ${formatCurrency(Number(payment.amount))}\nMethod: ${payment.method}\nStatus: ${payment.status}`;
+      const caption = `📝 پرداخت در انتظار تأیید\nکاربر: ${payment.user.telegramId}\nمبلغ: ${formatCurrency(Number(payment.amount))}\nروش: ${payment.method}\nوضعیت: ${payment.status}`;
       const keyboard = buildAdminPaymentKeyboard(payment.id);
 
       try {
@@ -369,18 +379,18 @@ export class BotApp {
     bot.callbackQuery("admin_manage_plans", async (ctx: any) => {
       const telegramId = ctx.from?.id.toString();
       if (!telegramId || !adminService.isAdmin(telegramId)) {
-        await ctx.answerCallbackQuery({ text: "Unauthorized.", show_alert: true });
+        await ctx.answerCallbackQuery({ text: "دسترسی شما مجاز نیست.", show_alert: true });
         return;
       }
       const plans = await datacenterServiceInstance.listPlans("infomaniak");
       if (plans.length === 0) {
-        await ctx.editMessageText("No plans available to manage.");
+        await ctx.editMessageText("هیچ پلنی برای مدیریت موجود نیست.");
         return;
       }
       const keyboard = new InlineKeyboard();
       plans.forEach((p) => keyboard.text(`${p.name} | ${p.vcpus} Core | ${p.ramMb / 1024} GB | ${p.diskGb} GB | ${formatCurrency(p.monthlyPrice ?? 0)}`, `admin_price_set:${p.id}`).row());
-      keyboard.text("🔙 Main menu", "main_menu");
-      await ctx.editMessageText("Select a plan to set its monthly price:", { reply_markup: keyboard });
+      keyboard.text("🔙 منوی اصلی", "main_menu");
+      await ctx.editMessageText("یک پلن را برای تنظیم قیمت ماهانه انتخاب کنید:", { reply_markup: keyboard });
     });
 
     bot.callbackQuery(/^admin_price_set:(.*)$/, async (ctx: any) => {
@@ -391,7 +401,7 @@ export class BotApp {
         return;
       }
       setPendingPrice(telegramId, externalId);
-      await ctx.editMessageText("Please send the new monthly price in USD as a message (numbers allowed, decimals OK). Example: 20.5");
+      await ctx.editMessageText("لطفاً قیمت ماهانه جدید را به صورت عددی به دلار ارسال کنید. مثال: 20.5");
     });
 
     // Handle admin text messages for setting price
@@ -407,16 +417,16 @@ export class BotApp {
       const text = ctx.message?.text?.trim();
       const price = Number(text?.replace(/[^0-9.]/g, ""));
       if (!price || isNaN(price) || price <= 0) {
-        await ctx.reply("Invalid price. Please send a numeric monthly price in USD (e.g. 20.5).");
+        await ctx.reply("قیمت نامعتبر است. لطفاً یک عدد معتبر برای قیمت ماهانه به دلار ارسال کنید (مثلاً 20.5)." );
         return;
       }
       try {
         await datacenterServiceInstance.updatePlanPrice(pending.externalId, price);
         clearPendingPrice(telegramId);
-        await ctx.reply(`Price updated to ${formatCurrency(price)} for plan ${pending.externalId}`);
+        await ctx.reply(`قیمت برای پلن ${pending.externalId} به ${formatCurrency(price)} به‌روزرسانی شد.`);
       } catch (error: any) {
         logger.error({ error }, "Failed to update plan price");
-        await ctx.reply("Failed to update price. Check logs.");
+        await ctx.reply("به‌روزرسانی قیمت با خطا مواجه شد. لاگ‌ها را بررسی کنید.");
       }
     });
 
@@ -424,16 +434,16 @@ export class BotApp {
       const [, action, paymentId] = parseCallbackData(ctx.callbackQuery.data!);
       const telegramId = ctx.from?.id.toString();
       if (!telegramId || !adminService.isAdmin(telegramId)) {
-        await ctx.answerCallbackQuery({ text: "Unauthorized.", show_alert: true });
+        await ctx.answerCallbackQuery({ text: "دسترسی شما مجاز نیست.", show_alert: true });
         return;
       }
       try {
         if (action === "approve") {
           await paymentService.approvePayment(paymentId, telegramId);
-          await ctx.answerCallbackQuery({ text: "Payment approved." });
+          await ctx.answerCallbackQuery({ text: "پرداخت تأیید شد." });
         } else {
           await paymentService.rejectPayment(paymentId, telegramId);
-          await ctx.answerCallbackQuery({ text: "Payment rejected." });
+          await ctx.answerCallbackQuery({ text: "پرداخت رد شد." });
         }
 
         if (ctx.callbackQuery?.message?.message_id) {
@@ -444,10 +454,10 @@ export class BotApp {
           }
         }
 
-        await ctx.reply(action === "approve" ? "✅ Payment approved and wallet updated." : "❌ Payment rejected.");
+        await ctx.reply(action === "approve" ? "✅ پرداخت تأیید شد و کیف پول به‌روزرسانی گردید." : "❌ پرداخت رد شد.");
       } catch (error: any) {
         logger.error({ error }, "Admin payment action failed");
-        await ctx.answerCallbackQuery({ text: error?.message ?? "Action failed.", show_alert: true });
+        await ctx.answerCallbackQuery({ text: error?.message ?? "عملیات با خطا مواجه شد.", show_alert: true });
       }
     });
 
@@ -457,21 +467,21 @@ export class BotApp {
         const servers = await serverService.getUserServers(user.id);
         
         if (servers.length === 0) {
-          await ctx.editMessageText("📦 <b>My Servers</b>\n\nYou don't have any servers yet. Create one to get started!", {
-            reply_markup: new InlineKeyboard().text("🖥 Create Server", "create_server").row().text("🔙 Main menu", "main_menu"),
+          await ctx.editMessageText("📦 <b>سرویس‌های من</b>\n\nهنوز هیچ سروری ندارید. برای شروع یکی بسازید!", {
+            reply_markup: new InlineKeyboard().text("🖥 ایجاد سرور", "create_server").row().text("🔙 منوی اصلی", "main_menu"),
             parse_mode: "HTML",
           });
           return;
         }
 
         const serverList = servers.map(s => `🖥 ${s.name} (${s.status})`).join("\n");
-        await ctx.editMessageText(`📦 <b>My Servers</b> (${servers.length})\n\n${serverList}\n\nSelect a server to view details and manage it:`, {
+        await ctx.editMessageText(`📦 <b>سرویس‌های من</b> (${servers.length})\n\n${serverList}\n\nبرای مشاهده جزئیات و مدیریت، یک سرور را انتخاب کنید:`, {
           reply_markup: buildServersListKeyboard(servers),
           parse_mode: "HTML",
         });
       } catch (error) {
         logger.error({ error }, "Failed to list user servers");
-        await ctx.answerCallbackQuery({ text: "Failed to load servers.", show_alert: true });
+        await ctx.answerCallbackQuery({ text: "بارگذاری سرورها با خطا مواجه شد.", show_alert: true });
       }
     });
 
@@ -481,42 +491,42 @@ export class BotApp {
         const server = await serverService.getServerDetails(serverId);
         
         if (!server) {
-          await ctx.answerCallbackQuery({ text: "Server not found.", show_alert: true });
+          await ctx.answerCallbackQuery({ text: "سرور یافت نشد.", show_alert: true });
           return;
         }
 
         const user = await ensureAppUser(ctx);
         if (server.userId !== user.id) {
-          await ctx.answerCallbackQuery({ text: "Unauthorized.", show_alert: true });
+          await ctx.answerCallbackQuery({ text: "دسترسی شما مجاز نیست.", show_alert: true });
           return;
         }
 
         const statusEmoji = server.status === 'ACTIVE' ? '🟢' : server.status === 'STOPPED' ? '🔴' : '⚪';
         const message = [
-          `<b>📊 Server: ${server.name}</b>`,
+          `<b>📊 سرور: ${server.name}</b>`,
           ``,
           `<b>📋 وضعیت سرور</b>`,
-          `${statusEmoji} <b>Status:</b> ${server.status}`,
-          `⏱️ <b>Created:</b> ${server.createdAt.toLocaleDateString('fa-IR')}`,
+          `${statusEmoji} <b>وضعیت:</b> ${server.status}`,
+          `⏱️ <b>تاریخ ساخت:</b> ${server.createdAt.toLocaleDateString('fa-IR')}`,
           ``,
-          `<b>💻 Server Specs</b>`,
-          `🔧 <b>Plan:</b> ${server.plan?.name}`,
-          `💾 <b>CPU:</b> ${server.plan?.vcpus} Core(s)`,
-          `🎛️ <b>RAM:</b> ${Math.round(server.plan?.ramMb ?? 0 / 1024)} GB`,
-          `💽 <b>Disk:</b> ${server.plan?.diskGb} GB`,
-          `🌐 <b>OS:</b> ${server.operatingSystem?.name}`,
+          `<b>💻 مشخصات سرور</b>`,
+          `🔧 <b>پلن:</b> ${server.plan?.name}`,
+          `💾 <b>CPU:</b> ${server.plan?.vcpus} هسته`,
+          `🎛️ <b>RAM:</b> ${Math.round((server.plan?.ramMb ?? 0) / 1024)} GB`,
+          `💽 <b>دیسک:</b> ${server.plan?.diskGb} GB`,
+          `🌐 <b>سیستم عامل:</b> ${server.operatingSystem?.name}`,
           ``,
-          `<b>🌍 Datacenter</b>`,
-          `📍 <b>Region:</b> ${server.datacenter?.name}`,
+          `<b>🌍 دیتاسنتر</b>`,
+          `📍 <b>منطقه:</b> ${server.datacenter?.name}`,
           ``,
           `<b>🔐 اطلاعات دسترسی</b>`,
-          server.ipv4Address ? `IPv4: <code>${server.ipv4Address}</code>` : `IPv4: <code>&lt;Pending&gt;</code>`,
-          server.ipv6Address ? `IPv6: <code>${server.ipv6Address}</code>` : `IPv6: <code>&lt;Pending&gt;</code>`,
-          `Username: <code>root</code>`,
+          server.ipv4Address ? `IPv4: <code>${server.ipv4Address}</code>` : `IPv4: <code>&lt;در انتظار&gt;</code>`,
+          server.ipv6Address ? `IPv6: <code>${server.ipv6Address}</code>` : `IPv6: <code>&lt;در انتظار&gt;</code>`,
+          `نام کاربری: <code>root</code>`,
           ``,
-          `<b>💰 Billing</b>`,
-          `💵 <b>Price:</b> ${formatCurrency(Number(server.hourlyPrice))} / hour`,
-          `📊 <b>Renewal:</b> Hourly`,
+          `<b>💰 صورتحساب</b>`,
+          `💵 <b>قیمت:</b> ${formatCurrency(Number(server.hourlyPrice))} / ساعت`,
+          `📊 <b>تمدید:</b> ساعتی`,
         ].join("\n");
 
         await ctx.editMessageText(message, {
@@ -536,19 +546,19 @@ export class BotApp {
         
         const server = await serverService.getServerDetails(serverId);
         if (!server || server.userId !== user.id) {
-          await ctx.answerCallbackQuery({ text: "Unauthorized.", show_alert: true });
+          await ctx.answerCallbackQuery({ text: "دسترسی شما مجاز نیست.", show_alert: true });
           return;
         }
 
         const actionMessages: Record<string, string> = {
-          start: "⏳ Starting server...",
-          stop: "⏳ Stopping server...",
-          reboot_soft: "⏳ Performing soft reboot...",
-          reboot_hard: "⏳ Performing hard reboot...",
-          delete: "⏳ Deleting server...",
+          start: "⏳ در حال راه‌اندازی سرور...",
+          stop: "⏳ در حال متوقف‌کردن سرور...",
+          reboot_soft: "⏳ در حال اجرای ری‌استارت نرم...",
+          reboot_hard: "⏳ در حال اجرای ری‌استارت سخت...",
+          delete: "⏳ در حال حذف سرور...",
         };
 
-        await ctx.editMessageText(actionMessages[action] ?? "⏳ Processing...", {
+        await ctx.editMessageText(actionMessages[action] ?? "⏳ در حال پردازش...", {
           reply_markup: new InlineKeyboard(),
           parse_mode: "HTML",
         });
@@ -556,32 +566,32 @@ export class BotApp {
         try {
           if (action === "start") {
             await serverService.startServer(serverId);
-            await ctx.editMessageText("✅ <b>Server started successfully!</b>\n\nIt may take a few moments to become fully operational.", {
-              reply_markup: new InlineKeyboard().text("🔄 Refresh", `server_view:${serverId}`).row().text("🔙 Back", "my_servers"),
+            await ctx.editMessageText("✅ <b>سرور با موفقیت راه‌اندازی شد!</b>\n\nممکن است چند لحظه طول بکشد تا به‌طور کامل آماده استفاده شود.", {
+              reply_markup: new InlineKeyboard().text("🔄 تازه‌سازی", `server_view:${serverId}`).row().text("🔙 بازگشت", "my_servers"),
               parse_mode: "HTML",
             });
           } else if (action === "stop") {
             await serverService.stopServer(serverId);
-            await ctx.editMessageText("✅ <b>Server stopped successfully!</b>", {
-              reply_markup: new InlineKeyboard().text("🔄 Refresh", `server_view:${serverId}`).row().text("🔙 Back", "my_servers"),
+            await ctx.editMessageText("✅ <b>سرور با موفقیت متوقف شد!</b>", {
+              reply_markup: new InlineKeyboard().text("🔄 تازه‌سازی", `server_view:${serverId}`).row().text("🔙 بازگشت", "my_servers"),
               parse_mode: "HTML",
             });
           } else if (action === "reboot_soft") {
             await serverService.rebootServer(serverId, 'SOFT');
-            await ctx.editMessageText("✅ <b>Soft reboot initiated!</b>\n\nThe server will restart gracefully.", {
-              reply_markup: new InlineKeyboard().text("🔄 Refresh", `server_view:${serverId}`).row().text("🔙 Back", "my_servers"),
+            await ctx.editMessageText("✅ <b>ری‌استارت نرم آغاز شد!</b>\n\nسرور به‌صورت نرم راه‌اندازی مجدد می‌شود.", {
+              reply_markup: new InlineKeyboard().text("🔄 تازه‌سازی", `server_view:${serverId}`).row().text("🔙 بازگشت", "my_servers"),
               parse_mode: "HTML",
             });
           } else if (action === "reboot_hard") {
             await serverService.rebootServer(serverId, 'HARD');
-            await ctx.editMessageText("✅ <b>Hard reboot initiated!</b>\n\nThe server will restart immediately.", {
-              reply_markup: new InlineKeyboard().text("🔄 Refresh", `server_view:${serverId}`).row().text("🔙 Back", "my_servers"),
+            await ctx.editMessageText("✅ <b>ری‌استارت سخت آغاز شد!</b>\n\nسرور بلافاصله راه‌اندازی مجدد می‌شود.", {
+              reply_markup: new InlineKeyboard().text("🔄 تازه‌سازی", `server_view:${serverId}`).row().text("🔙 بازگشت", "my_servers"),
               parse_mode: "HTML",
             });
           } else if (action === "delete") {
             await serverService.deleteServer(serverId);
-            await ctx.editMessageText("✅ <b>Server deleted successfully!</b>\n\nThe server has been removed from your account.", {
-              reply_markup: new InlineKeyboard().text("📦 My Servers", "my_servers").row().text("🔙 Main menu", "main_menu"),
+            await ctx.editMessageText("✅ <b>سرور با موفقیت حذف شد!</b>\n\nسرور از حساب شما حذف شده است.", {
+              reply_markup: new InlineKeyboard().text("📦 سرویس‌های من", "my_servers").row().text("🔙 منوی اصلی", "main_menu"),
               parse_mode: "HTML",
             });
           }
@@ -589,9 +599,9 @@ export class BotApp {
         } catch (actionError: any) {
           logger.error({ actionError, serverId, action }, "Server action failed");
           await ctx.editMessageText(
-            `❌ <b>Action failed!</b>\n\n${actionError?.message ?? "An error occurred while performing the action."}`,
+            `❌ <b>عملیات با خطا مواجه شد!</b>\n\n${actionError?.message ?? "در حین انجام عملیات خطایی رخ داد."}`,
             {
-              reply_markup: new InlineKeyboard().text("🔄 Refresh", `server_view:${serverId}`).row().text("🔙 Back", "my_servers"),
+              reply_markup: new InlineKeyboard().text("🔄 تازه‌سازی", `server_view:${serverId}`).row().text("🔙 بازگشت", "my_servers"),
               parse_mode: "HTML",
             }
           );
@@ -615,12 +625,12 @@ export class BotApp {
 
         const images = await datacenterServiceInstance.listOperatingSystems(server.datacenter?.slug ?? "infomaniak");
         if (images.length === 0) {
-          await ctx.answerCallbackQuery({ text: "No operating systems available.", show_alert: true });
+          await ctx.answerCallbackQuery({ text: "هیچ سیستم عاملی در دسترس نیست.", show_alert: true });
           return;
         }
 
         const imageTokens = createRebuildState(serverId, images);
-        await ctx.editMessageText("💿 <b>Select Operating System for Rebuild</b>\n\n⚠️ <i>This will erase all data on the server and install the selected OS.</i>", {
+        await ctx.editMessageText("💿 <b>انتخاب سیستم عامل برای بازنصب</b>\n\n⚠️ <i>این عملیات همه داده‌های سرور را پاک می‌کند و سیستم عامل انتخابی را نصب می‌کند.</i>", {
           reply_markup: buildRebuildOsKeyboard(imageTokens, images),
           parse_mode: "HTML",
         });
@@ -652,18 +662,18 @@ export class BotApp {
 
         const image = await datacenterServiceInstance.getOperatingSystemById(imageId);
         if (!image) {
-          await ctx.answerCallbackQuery({ text: "Operating system not found.", show_alert: true });
+          await ctx.answerCallbackQuery({ text: "سیستم عامل مورد نظر یافت نشد.", show_alert: true });
           return;
         }
 
-        await ctx.editMessageText(`⏳ <b>Rebuilding server with ${image.name}...</b>\n\nThis process may take a few minutes.`, {
+        await ctx.editMessageText(`⏳ <b>در حال بازنصب سرور با ${image.name}...</b>\n\nاین فرآیند ممکن است چند دقیقه طول بکشد.`, {
           reply_markup: new InlineKeyboard(),
           parse_mode: "HTML",
         });
 
         try {
           await serverService.rebuildServer(serverId, imageId);
-          await ctx.editMessageText(`✅ <b>Server rebuild initiated successfully!</b>\n\n🖥️ <b>New OS:</b> ${image.name}\n\n⏱️ The server will be unavailable during the rebuild process. Please wait a few minutes before accessing it.`, {
+          await ctx.editMessageText(`✅ <b>بازنصب سرور با موفقیت آغاز شد!</b>\n\n🖥️ <b>سیستم عامل جدید:</b> ${image.name}\n\n⏱️ در طول فرآیند بازنصب سرور در دسترس نخواهد بود. چند دقیقه صبر کنید.`, {
             reply_markup: new InlineKeyboard().text("🔄 Refresh", `server_view:${serverId}`).row().text("🔙 Back", "my_servers"),
             parse_mode: "HTML",
           });
@@ -671,7 +681,7 @@ export class BotApp {
         } catch (rebuildError: any) {
           logger.error({ rebuildError, serverId, imageId }, "Server rebuild failed");
           await ctx.editMessageText(
-            `❌ <b>Rebuild failed!</b>\n\n${rebuildError?.message ?? "An error occurred during rebuild."}`,
+            `❌ <b>بازنصب با خطا مواجه شد!</b>\n\n${rebuildError?.message ?? "در حین بازنصب خطایی رخ داد."}`,
             {
               reply_markup: new InlineKeyboard().text("🔄 Refresh", `server_view:${serverId}`).row().text("🔙 Back", "my_servers"),
               parse_mode: "HTML",
@@ -688,8 +698,8 @@ export class BotApp {
 
     bot.callbackQuery(/^rebuild_cancel$/, async (ctx: any) => {
       try {
-        await ctx.editMessageText("Rebuild cancelled.", {
-          reply_markup: new InlineKeyboard().text("🔙 Back to My Servers", "my_servers"),
+        await ctx.editMessageText("بازنصب لغو شد.", {
+          reply_markup: new InlineKeyboard().text("🔙 بازگشت به سرویس‌ها", "my_servers"),
         });
       } catch (error) {
         logger.error({ error }, "Rebuild cancel handler error");
@@ -705,7 +715,7 @@ export class BotApp {
           logger.warn({ error }, "Unable to delete message before returning to main menu");
         }
       }
-      await ctx.reply("Main menu", { reply_markup: buildMainMenuKeyboard() });
+      await ctx.reply("منوی اصلی", { reply_markup: buildMainMenuKeyboard() });
     });
 
     bot.catch((err: any) => {
